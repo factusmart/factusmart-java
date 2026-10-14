@@ -26,7 +26,7 @@ import javax.crypto.spec.SecretKeySpec;
  * FactuSmart fs = FactuSmart.builder()
  *     .apiKey("TU_API_KEY")
  *     .baseUrl("https://TU_URL_BASE/api/v1/issuer")
- *     .ruc("20123456789")
+ *     .ruc("20100070970")
  *     .build();
  * Map<String, Object> r = fs.comprobantes.emitir(datos);
  * }</pre>

@@ -2,8 +2,8 @@ package pe.factusmart;
 
 /**
  * Opciones por llamada (todas opcionales). Se encadenan:
- * {@code new Opciones().ruc("20123456789").idempotencyKey("venta-123")}, o con los atajos
- * {@code Opciones.conRuc("20123456789")} / {@code Opciones.conIdempotencyKey("venta-123")}.
+ * {@code new Opciones().ruc("20100070970").idempotencyKey("venta-123")}, o con los atajos
+ * {@code Opciones.conRuc("20100070970")} / {@code Opciones.conIdempotencyKey("venta-123")}.
  *
  * <ul>
  *   <li>{@code ruc}: sobreescribe el RUC del constructor (todas las operaciones con RUC emisor).</li>

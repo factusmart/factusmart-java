@@ -66,7 +66,7 @@ class SinRedTest {
     final List<Long> esperas = new ArrayList<>();
 
     FactuSmart cliente(Falso t) {
-        return FactuSmart.builder().apiKey("clave").baseUrl(BASE + "/").ruc("20123456789")
+        return FactuSmart.builder().apiKey("clave").baseUrl(BASE + "/").ruc("20100070970")
                 .transporte(t).dormir(esperas::add).build();
     }
 
@@ -195,7 +195,7 @@ class SinRedTest {
         fs.catalogos.consultar("unidades", new Opciones().q("kilo gramo").ruc("20999999999"));
         SolicitudHttp p = t.peticiones.get(0);
         assertEquals("GET", p.getMetodo());
-        assertEquals(BASE + "/ping?ruc=20123456789", p.getUrl());
+        assertEquals(BASE + "/ping?ruc=20100070970", p.getUrl());
         assertEquals("clave", p.getCabecera("x-api-key"));
         assertEquals("application/json", p.getCabecera("Accept"));
         assertEquals("factusmart-java/" + FactuSmart.VERSION, p.getCabecera("User-Agent"));
@@ -210,7 +210,7 @@ class SinRedTest {
         FactuSmart fs = cliente(t);
         fs.comprobantes.emitir(boleta());
         Map<String, Object> c = Json.leerObjeto(t.peticiones.get(0).getCuerpoTexto());
-        assertEquals("20123456789", c.get("ruc"));
+        assertEquals("20100070970", c.get("ruc"));
         assertEquals("#", c.get("numero_documento"));
         assertEquals("PEN", c.get("codigo_tipo_moneda"));
         assertEquals("0101", c.get("codigo_tipo_operacion"));
@@ -220,11 +220,11 @@ class SinRedTest {
         assertTrue(t.peticiones.get(0).getCabecera("Idempotency-Key")
                 .matches("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
 
-        Map<String, Object> nota = Json.objeto("codigo_tipo_documento", "07", "ruc", "20555555555", "numero_documento", 15,
+        Map<String, Object> nota = Json.objeto("codigo_tipo_documento", "07", "ruc", "20131312955", "numero_documento", 15,
                 "fecha_de_emision", "2026-10-01", "codigo_tipo_moneda", "USD");
         fs.comprobantes.emitir(nota, Opciones.conIdempotencyKey("venta-1").ruc("20888888888"));
         Map<String, Object> c2 = Json.leerObjeto(t.peticiones.get(1).getCuerpoTexto());
-        assertEquals("20555555555", c2.get("ruc"));
+        assertEquals("20131312955", c2.get("ruc"));
         assertEquals(15L, c2.get("numero_documento"));
         assertEquals("2026-10-01", c2.get("fecha_de_emision"));
         assertEquals("USD", c2.get("codigo_tipo_moneda"));
@@ -237,7 +237,7 @@ class SinRedTest {
     @SuppressWarnings("unchecked")
     void ejemploDelReadmeCompilaYFunciona() {
         Falso t = new Falso().responde(200, "{\"success\":true,\"aceptado_por_sunat\":true,\"serie_numero\":\"F001-1\"}");
-        FactuSmart fs = FactuSmart.builder().apiKey("TU_API_KEY").baseUrl("https://tu-servidor.test/api/v1/issuer").ruc("20123456789")
+        FactuSmart fs = FactuSmart.builder().apiKey("TU_API_KEY").baseUrl("https://tu-servidor.test/api/v1/issuer").ruc("20100070970")
                 .transporte(t).build();
 
         Map<String, Object> calc = FactuSmart.calcularComprobante(Json.lista(
@@ -245,7 +245,7 @@ class SinRedTest {
 
         Map<String, Object> r = fs.comprobantes.emitir(Json.objeto(
                 "codigo_tipo_documento", "01",
-                "datos_del_cliente_o_receptor", Json.objeto("codigo_tipo_documento_identidad", "6", "numero_documento", "20555555555"),
+                "datos_del_cliente_o_receptor", Json.objeto("codigo_tipo_documento_identidad", "6", "numero_documento", "20131312955"),
                 "items", calc.get("items"), "totales", calc.get("totales")));
 
         assertEquals("true F001-1", r.get("aceptado_por_sunat") + " " + r.get("serie_numero"));
@@ -342,11 +342,11 @@ class SinRedTest {
         assertThrows(FactuSmartException.class, () -> fs.guias.emitir(Json.objeto("serie_documento", "T001")));
         assertThrows(FactuSmartException.class, () -> fs.comprobantes.reenviar("abc"));
         assertThrows(FactuSmartException.class, () -> fs.comprobantes.consultarSunat("abc"));
-        assertThrows(FactuSmartException.class, () -> fs.rucs.activar("20123456789", false));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.activar("20100070970", false));
         assertEquals(5, t.peticiones.size(), "cada operación debe hacer una sola petición");
         assertEquals("PATCH", t.peticiones.get(4).getMetodo());
         assertEquals("{\"activo\":false}", t.peticiones.get(4).getCuerpoTexto());
-        assertEquals("20123456789", Json.leerObjeto(t.peticiones.get(2).getCuerpoTexto()).get("ruc"));
+        assertEquals("20100070970", Json.leerObjeto(t.peticiones.get(2).getCuerpoTexto()).get("ruc"));
         Map<String, Object> guia = Json.leerObjeto(t.peticiones.get(1).getCuerpoTexto());
         assertEquals("#", guia.get("numero_documento"));
         assertNotNull(guia.get("hora_de_emision"));
@@ -407,7 +407,7 @@ class SinRedTest {
         FactuSmartException otro = assertThrows(FactuSmartException.class, fs.series::listar);
         assertEquals(FactuSmartException.class, otro.getClass());
         assertEquals("Error del API de FactuSmart. (HTTP 400)", otro.getMensaje());
-        assertEquals(BASE + "/documents?limite=500&ruc=20123456789", t.peticiones.get(5).getUrl());
+        assertEquals(BASE + "/documents?limite=500&ruc=20100070970", t.peticiones.get(5).getUrl());
     }
 
     @Test
@@ -416,7 +416,7 @@ class SinRedTest {
         Falso t = new Falso().responde(new RespuestaHttp(200, null, pdf));
         FactuSmart fs = cliente(t);
         assertArrayEquals(pdf, fs.comprobantes.descargar("a b/c", "pdf"));
-        assertEquals(BASE + "/documents/a%20b%2Fc/pdf?ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/documents/a%20b%2Fc/pdf?ruc=20100070970", t.peticiones.get(0).getUrl());
         assertTrue(t.peticiones.get(0).getCabecera("Accept").startsWith("application/pdf"));
         assertThrows(FactuSmartException.class, () -> fs.comprobantes.descargar("abc", "zip"));
         assertThrows(FactuSmartException.class, () -> fs.comprobantes.consultar(" "));
@@ -440,16 +440,16 @@ class SinRedTest {
         Map<String, Object> datos = Json.objeto("codigo_anexo", "0001", "nombre", "Local Centro",
                 "direccion", "Av. Siempre Viva 123", "ubigeo", "150101");
         fs.establecimientos.crear(datos);
-        fs.establecimientos.crear(Json.objeto("codigo_anexo", "0002", "ruc", "20555555555"), Opciones.conRuc("20999999999"));
+        fs.establecimientos.crear(Json.objeto("codigo_anexo", "0002", "ruc", "20131312955"), Opciones.conRuc("20999999999"));
 
         assertEquals("GET", t.peticiones.get(0).getMetodo());
-        assertEquals(BASE + "/establecimientos?ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/establecimientos?ruc=20100070970", t.peticiones.get(0).getUrl());
         assertEquals(BASE + "/establecimientos?ruc=20999999999", t.peticiones.get(1).getUrl());
         assertEquals("POST", t.peticiones.get(2).getMetodo());
         assertEquals(BASE + "/establecimientos", t.peticiones.get(2).getUrl());
         assertEquals("{\"codigo_anexo\":\"0001\",\"nombre\":\"Local Centro\",\"direccion\":\"Av. Siempre Viva 123\","
-                + "\"ubigeo\":\"150101\",\"ruc\":\"20123456789\"}", t.peticiones.get(2).getCuerpoTexto());
-        assertEquals("20555555555", Json.leerObjeto(t.peticiones.get(3).getCuerpoTexto()).get("ruc"), "se respeta el ruc del usuario");
+                + "\"ubigeo\":\"150101\",\"ruc\":\"20100070970\"}", t.peticiones.get(2).getCuerpoTexto());
+        assertEquals("20131312955", Json.leerObjeto(t.peticiones.get(3).getCuerpoTexto()).get("ruc"), "se respeta el ruc del usuario");
         assertFalse(datos.containsKey("ruc"), "no se modifica el Map del usuario");
         assertThrows(FactuSmartException.class, () -> fs.establecimientos.crear(null));
         assertEquals(4, t.peticiones.size());
@@ -484,7 +484,7 @@ class SinRedTest {
         assertEquals("25", r.get("catalogo_sunat"));
         fs.catalogos.buscarProductoSunat("aceite de oliva", new Opciones().limite(5).ruc("20999999999"));
         assertEquals("GET", t.peticiones.get(0).getMetodo());
-        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&ruc=20100070970", t.peticiones.get(0).getUrl());
         assertEquals(t.peticiones.get(1).getUrl(), t.peticiones.get(2).getUrl(), "GET: se reintenta");
         assertEquals(BASE + "/catalogos/productos-sunat?q=aceite%20de%20oliva&limite=5&ruc=20999999999", t.peticiones.get(2).getUrl());
         assertThrows(FactuSmartException.class, () -> fs.catalogos.buscarProductoSunat(" "));
@@ -499,9 +499,9 @@ class SinRedTest {
         fs.catalogos.buscarProductoSunat("computador", new Opciones().nivel("producto"));
         fs.catalogos.buscarProductoSunat("43", new Opciones().limite(10).nivel("familia").ruc("20999999999"));
         fs.catalogos.buscarProductoSunat("computador", new Opciones().nivel(" "));
-        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&nivel=producto&ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&nivel=producto&ruc=20100070970", t.peticiones.get(0).getUrl());
         assertEquals(BASE + "/catalogos/productos-sunat?q=43&limite=10&nivel=familia&ruc=20999999999", t.peticiones.get(1).getUrl());
-        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&ruc=20123456789", t.peticiones.get(2).getUrl(), "sin nivel no se manda");
+        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&ruc=20100070970", t.peticiones.get(2).getUrl(), "sin nivel no se manda");
     }
 
     // ───────────── 11. descargar con formato (sin red) ─────────────
@@ -516,7 +516,7 @@ class SinRedTest {
         fs.comprobantes.descargar("abc", "pdf", Opciones.conFormato("ticket58").ruc("20999999999"));
         fs.comprobantes.descargar("abc", "pdf", Opciones.conRuc("20999999999"));
         assertEquals("GET", t.peticiones.get(0).getMetodo());
-        assertEquals(BASE + "/documents/abc/pdf?formato=ticket&ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/documents/abc/pdf?formato=ticket&ruc=20100070970", t.peticiones.get(0).getUrl());
         assertEquals(BASE + "/documents/abc/pdf?formato=ticket58&ruc=20999999999", t.peticiones.get(1).getUrl());
         assertEquals(BASE + "/documents/abc/pdf?ruc=20999999999", t.peticiones.get(2).getUrl(), "sin formato no se manda");
     }

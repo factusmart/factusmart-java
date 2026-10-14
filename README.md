@@ -10,13 +10,25 @@ IGV y los totales, consulta los catálogos SUNAT, y descarga el PDF, el XML firm
 
 ## Instalar
 
-Gradle:
+Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.1.0.jar` desde la release
+[v0.1.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.1.0) y agrégalo al
+classpath de tu proyecto.
+
+Gradle (guarda el `.jar` en la carpeta `libs/` de tu proyecto):
 
 ```groovy
-implementation 'pe.factusmart:factusmart:0.1.0'
+dependencies {
+    implementation files('libs/factusmart-0.1.0.jar')
+}
 ```
 
-Maven:
+Maven: instálalo en tu repositorio local una sola vez…
+
+```bash
+mvn install:install-file -Dfile=factusmart-0.1.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.1.0 -Dpackaging=jar
+```
+
+…y luego decláralo como cualquier dependencia:
 
 ```xml
 <dependency>
@@ -26,6 +38,8 @@ Maven:
 </dependency>
 ```
 
+Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.1.0.jar MiApp.java`.
+
 ## Ejemplo en 10 líneas
 
 ```java
@@ -33,14 +47,14 @@ import pe.factusmart.FactuSmart;
 import pe.factusmart.Json;
 import java.util.Map;
 
-FactuSmart fs = FactuSmart.builder().apiKey("TU_API_KEY").baseUrl("https://TU_URL_BASE/api/v1/issuer").ruc("20123456789").build();
+FactuSmart fs = FactuSmart.builder().apiKey("TU_API_KEY").baseUrl("https://TU_URL_BASE/api/v1/issuer").ruc("20100070970").build();
 
 Map<String, Object> calc = FactuSmart.calcularComprobante(Json.lista(
     Json.objeto("descripcion", "Servicio de consultoría", "cantidad", 1, "valor_unitario", 100, "afectacion", "10")));
 
 Map<String, Object> r = fs.comprobantes.emitir(Json.objeto(
     "codigo_tipo_documento", "01",
-    "datos_del_cliente_o_receptor", Json.objeto("codigo_tipo_documento_identidad", "6", "numero_documento", "20555555555"),
+    "datos_del_cliente_o_receptor", Json.objeto("codigo_tipo_documento_identidad", "6", "numero_documento", "20131312955"),
     "items", calc.get("items"), "totales", calc.get("totales")));
 
 System.out.println(r.get("aceptado_por_sunat") + " " + r.get("serie_numero"));
@@ -279,7 +293,7 @@ try {
 } catch (ErrorDeValidacion e) {
     System.out.println("Corrige el JSON: " + e.getMensaje() + " " + e.getCampos());
 } catch (SinCreditos e) {
-    System.out.println("Recarga créditos");
+    System.out.println("Sube de plan o pide créditos extra para tu plan");
 } catch (FactuSmartException e) {
     if ("PLAN_VENCIDO".equals(e.getCodigo())) System.out.println("Renueva tu plan");
     else throw e;
