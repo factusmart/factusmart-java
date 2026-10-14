@@ -69,6 +69,8 @@ public final class FactuSmart {
     public final Guias guias;
     /** {@code /rucs*}. */
     public final Rucs rucs;
+    /** {@code /establecimientos} (locales / anexos del RUC). */
+    public final Establecimientos establecimientos;
 
     private final String apiKey;
     private final String baseUrl;
@@ -116,6 +118,7 @@ public final class FactuSmart {
         this.anulaciones = new Anulaciones(this);
         this.guias = new Guias(this);
         this.rucs = new Rucs(this);
+        this.establecimientos = new Establecimientos(this);
     }
 
     /** Empieza a configurar un cliente. {@code apiKey} y {@code baseUrl} son obligatorias. */

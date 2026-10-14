@@ -1,5 +1,7 @@
 package pe.factusmart;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,12 +94,47 @@ public final class Comprobantes {
         return descargar(externalId, tipo, null);
     }
 
+    /**
+     * Igual, con {@code ruc} y/o {@code formato} en {@link Opciones}. {@code formato} (solo PDF):
+     * {@code a4}, {@code a5}, {@code ticket}, {@code ticket80}, {@code ticket58}, {@code ticket50};
+     * sin formato → A4 (no se manda el parámetro). Con xml/cdr o un valor fuera de la lista lanza
+     * {@link ErrorDeValidacion} (422, {@code DATOS_INVALIDOS}) sin hacer la petición.
+     */
     public byte[] descargar(String externalId, String tipo, Opciones opciones) {
         if (!"pdf".equals(tipo) && !"xml".equals(tipo) && !"cdr".equals(tipo)) {
             throw new FactuSmartException("Tipo de archivo inválido \"" + tipo + "\": usa \"pdf\", \"xml\" o \"cdr\".");
         }
-        return fs.bytes(FactuSmart.Peticion.get("/documents/" + id(externalId) + "/" + tipo)
-                .query("ruc", fs.rucDe(opciones)).reintentable(true));
+        String formato = opciones != null ? opciones.getFormato() : null;
+        if (formato != null) {
+            if (!"pdf".equals(tipo)) {
+                throw errorDeFormato("formato solo aplica al PDF: no se puede usar con \"" + tipo + "\".");
+            }
+            if (!FORMATOS_PDF.contains(formato)) {
+                throw errorDeFormato("formato inválido \"" + formato + "\": usa " + String.join(", ", FORMATOS_PDF) + ".");
+            }
+        }
+        FactuSmart.Peticion p = FactuSmart.Peticion.get("/documents/" + id(externalId) + "/" + tipo).reintentable(true);
+        if (formato != null) p.query("formato", formato);
+        p.query("ruc", fs.rucDe(opciones));
+        return fs.bytes(p);
+    }
+
+    /** Valores de {@code formato} que acepta {@code GET /documents/{id}/pdf}. */
+    static final List<String> FORMATOS_PDF = Collections.unmodifiableList(
+            Arrays.asList("a4", "a5", "ticket", "ticket80", "ticket58", "ticket50"));
+
+    /** 422 local (sin petición): {@code codigo} DATOS_INVALIDOS y {@code campos.formato}. */
+    private static ErrorDeValidacion errorDeFormato(String mensaje) {
+        Map<String, Object> campos = new LinkedHashMap<>();
+        campos.put("formato", Collections.singletonList(mensaje));
+        Map<String, Object> respuesta = new LinkedHashMap<>();
+        respuesta.put("success", false);
+        respuesta.put("message", mensaje);
+        respuesta.put("codigo", "DATOS_INVALIDOS");
+        respuesta.put("reintentable", false);
+        respuesta.put("campos", campos);
+        respuesta.put("formatos_validos", FORMATOS_PDF);
+        return new ErrorDeValidacion(mensaje, 422, respuesta);
     }
 
     /** {@code POST /documents/{external_id}/reenviar} — no se reintenta automáticamente. Revisa {@code aceptado_por_sunat}. */

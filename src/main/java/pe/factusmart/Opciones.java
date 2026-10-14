@@ -10,6 +10,9 @@ package pe.factusmart;
  *   <li>{@code idempotencyKey}: solo {@code comprobantes.emitir}.</li>
  *   <li>{@code porcentajeIgv}: solo {@code comprobantes.calcular} (18 o 10.5).</li>
  *   <li>{@code q}: solo {@code catalogos.consultar} (búsqueda por código o descripción).</li>
+ *   <li>{@code limite}: solo {@code catalogos.buscarProductoSunat} (máx. 50).</li>
+ *   <li>{@code formato}: solo {@code comprobantes.descargar(id, "pdf", ...)}: {@code a4}, {@code a5},
+ *       {@code ticket} (= {@code ticket80}), {@code ticket80}, {@code ticket58}, {@code ticket50}.</li>
  * </ul>
  */
 public final class Opciones {
@@ -18,6 +21,8 @@ public final class Opciones {
     private String idempotencyKey;
     private Number porcentajeIgv;
     private String q;
+    private String formato;
+    private Integer limite;
 
     public Opciones() {}
 
@@ -47,6 +52,30 @@ public final class Opciones {
     public Opciones q(String busqueda) {
         this.q = busqueda;
         return this;
+    }
+
+    /** Tamaño del PDF en {@code comprobantes.descargar(id, "pdf", ...)}. Sin formato → A4. */
+    public Opciones formato(String formato) {
+        this.formato = formato;
+        return this;
+    }
+
+    public static Opciones conFormato(String formato) {
+        return new Opciones().formato(formato);
+    }
+
+    /** Máximo de resultados en {@code catalogos.buscarProductoSunat} (el API admite hasta 50). */
+    public Opciones limite(int limite) {
+        this.limite = limite;
+        return this;
+    }
+
+    public Integer getLimite() {
+        return limite;
+    }
+
+    public String getFormato() {
+        return formato;
     }
 
     public String getRuc() {

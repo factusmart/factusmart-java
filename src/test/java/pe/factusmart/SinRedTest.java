@@ -425,6 +425,108 @@ class SinRedTest {
         assertEquals(1, t.peticiones.size());
     }
 
+    // ───────────── 10. establecimientos (sin red) ─────────────
+
+    @Test
+    void establecimientosListarYCrear() {
+        Falso t = new Falso().responde(200, "{\"success\":true,\"establecimientos\":[]}")
+                .responde(200, "{\"success\":true,\"establecimientos\":[]}")
+                .responde(201, "{\"success\":true,\"message\":\"ok\",\"establecimiento\":{}}")
+                .responde(201, "{\"success\":true}");
+        FactuSmart fs = cliente(t);
+        Map<String, Object> r = fs.establecimientos.listar();
+        assertTrue(r.containsKey("establecimientos"));
+        fs.establecimientos.listar(Opciones.conRuc("20999999999"));
+        Map<String, Object> datos = Json.objeto("codigo_anexo", "0001", "nombre", "Local Centro",
+                "direccion", "Av. Siempre Viva 123", "ubigeo", "150101");
+        fs.establecimientos.crear(datos);
+        fs.establecimientos.crear(Json.objeto("codigo_anexo", "0002", "ruc", "20555555555"), Opciones.conRuc("20999999999"));
+
+        assertEquals("GET", t.peticiones.get(0).getMetodo());
+        assertEquals(BASE + "/establecimientos?ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/establecimientos?ruc=20999999999", t.peticiones.get(1).getUrl());
+        assertEquals("POST", t.peticiones.get(2).getMetodo());
+        assertEquals(BASE + "/establecimientos", t.peticiones.get(2).getUrl());
+        assertEquals("{\"codigo_anexo\":\"0001\",\"nombre\":\"Local Centro\",\"direccion\":\"Av. Siempre Viva 123\","
+                + "\"ubigeo\":\"150101\",\"ruc\":\"20123456789\"}", t.peticiones.get(2).getCuerpoTexto());
+        assertEquals("20555555555", Json.leerObjeto(t.peticiones.get(3).getCuerpoTexto()).get("ruc"), "se respeta el ruc del usuario");
+        assertFalse(datos.containsKey("ruc"), "no se modifica el Map del usuario");
+        assertThrows(FactuSmartException.class, () -> fs.establecimientos.crear(null));
+        assertEquals(4, t.peticiones.size());
+    }
+
+    @Test
+    void establecimientosCrearNuncaSeReintentaYListarSi() {
+        String err = "{\"success\":false,\"message\":\"Error interno\",\"codigo\":\"ERROR_INTERNO\",\"reintentable\":true}";
+        Falso t = new Falso().responde(503, err).responde(503, err).responde(200, "{\"success\":true,\"establecimientos\":[]}");
+        FactuSmart fs = cliente(t);
+        FactuSmartException e = assertThrows(FactuSmartException.class,
+                () -> fs.establecimientos.crear(Json.objeto("codigo_anexo", "0001")));
+        assertEquals(503, e.getStatus());
+        assertEquals(1, t.peticiones.size(), "crear: una sola petición ante 503");
+        fs.establecimientos.listar();
+        assertEquals(3, t.peticiones.size(), "listar es GET: se reintenta");
+
+        Falso t2 = new Falso().responde(403, "{\"success\":false,\"message\":\"Tu plan no admite más locales.\","
+                + "\"codigo\":\"LIMITE_ESTABLECIMIENTOS\",\"reintentable\":false}");
+        RucNoAutorizado lim = assertThrows(RucNoAutorizado.class,
+                () -> cliente(t2).establecimientos.crear(Json.objeto("codigo_anexo", "0009")));
+        assertEquals("LIMITE_ESTABLECIMIENTOS", lim.getCodigo());
+    }
+
+    @Test
+    void buscarProductoSunatRutaYQuery() {
+        String err = "{\"success\":false,\"message\":\"Error interno\",\"codigo\":\"ERROR_INTERNO\",\"reintentable\":true}";
+        Falso t = new Falso().responde(200, "{\"success\":true,\"catalogo_sunat\":\"25\",\"datos\":[]}")
+                .responde(503, err).responde(200, "{\"success\":true,\"datos\":[]}");
+        FactuSmart fs = cliente(t);
+        Map<String, Object> r = fs.catalogos.buscarProductoSunat("computador");
+        assertEquals("25", r.get("catalogo_sunat"));
+        fs.catalogos.buscarProductoSunat("aceite de oliva", new Opciones().limite(5).ruc("20999999999"));
+        assertEquals("GET", t.peticiones.get(0).getMetodo());
+        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(t.peticiones.get(1).getUrl(), t.peticiones.get(2).getUrl(), "GET: se reintenta");
+        assertEquals(BASE + "/catalogos/productos-sunat?q=aceite%20de%20oliva&limite=5&ruc=20999999999", t.peticiones.get(2).getUrl());
+        assertThrows(FactuSmartException.class, () -> fs.catalogos.buscarProductoSunat(" "));
+        assertEquals(3, t.peticiones.size());
+    }
+
+    // ───────────── 11. descargar con formato (sin red) ─────────────
+
+    @Test
+    void descargarPdfConFormato() {
+        byte[] pdf = "%PDF-1.4".getBytes(StandardCharsets.ISO_8859_1);
+        Falso t = new Falso().responde(new RespuestaHttp(200, null, pdf)).responde(new RespuestaHttp(200, null, pdf))
+                .responde(new RespuestaHttp(200, null, pdf));
+        FactuSmart fs = cliente(t);
+        fs.comprobantes.descargar("abc", "pdf", new Opciones().formato("ticket"));
+        fs.comprobantes.descargar("abc", "pdf", Opciones.conFormato("ticket58").ruc("20999999999"));
+        fs.comprobantes.descargar("abc", "pdf", Opciones.conRuc("20999999999"));
+        assertEquals("GET", t.peticiones.get(0).getMetodo());
+        assertEquals(BASE + "/documents/abc/pdf?formato=ticket&ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/documents/abc/pdf?formato=ticket58&ruc=20999999999", t.peticiones.get(1).getUrl());
+        assertEquals(BASE + "/documents/abc/pdf?ruc=20999999999", t.peticiones.get(2).getUrl(), "sin formato no se manda");
+    }
+
+    @Test
+    void descargarFormatoInvalidoLanzaSinPeticion() {
+        Falso t = new Falso();
+        FactuSmart fs = cliente(t);
+        ErrorDeValidacion x = assertThrows(ErrorDeValidacion.class,
+                () -> fs.comprobantes.descargar("abc", "xml", Opciones.conFormato("ticket")));
+        assertEquals(422, x.getStatus());
+        assertEquals("DATOS_INVALIDOS", x.getCodigo());
+        assertFalse(x.getCampos().get("formato").isEmpty());
+        assertThrows(ErrorDeValidacion.class, () -> fs.comprobantes.descargar("abc", "cdr", Opciones.conFormato("a4")));
+        ErrorDeValidacion v = assertThrows(ErrorDeValidacion.class,
+                () -> fs.comprobantes.descargar("abc", "pdf", Opciones.conFormato("ticket70")));
+        assertEquals(422, v.getStatus());
+        assertEquals("DATOS_INVALIDOS", v.getCodigo());
+        assertTrue(v.getCampos().containsKey("formato"));
+        assertThrows(ErrorDeValidacion.class, () -> fs.comprobantes.descargar("abc", "pdf", Opciones.conFormato("TICKET")));
+        assertEquals(0, t.peticiones.size(), "ninguna petición");
+    }
+
     @Test
     void respuestaNoJsonEnExitoEsError() {
         Falso t = new Falso().responde(200, "<html>proxy</html>");

@@ -99,6 +99,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.comprobantes.listar(filtros, opciones)` | `GET /documents` | `Map` (`comprobantes`, `siguiente_cursor`) |
 | `fs.comprobantes.consultar(externalId, opciones)` | `GET /documents/{id}` | `Map` |
 | `fs.comprobantes.descargar(externalId, "pdf" \| "xml" \| "cdr", opciones)` | `GET /documents/{id}/{tipo}` | **`byte[]`** |
+| `fs.comprobantes.descargar(externalId, "pdf", Opciones.conFormato("ticket"))` | `GET /documents/{id}/pdf?formato=ticket` | **`byte[]`** (PDF en ticket/A5) |
 | `fs.comprobantes.reenviar(externalId, opciones)` | `POST /documents/{id}/reenviar` | `Map` |
 | `fs.comprobantes.consultarSunat(externalId, opciones)` | `POST /documents/{id}/consultar-sunat` | `Map` |
 | `fs.comprobantes.historial(externalId, opciones)` | `GET /documents/{id}/historial` | `Map` |
@@ -107,6 +108,9 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.anulaciones.estado(ticket, opciones)` | `GET /anulaciones/{ticket}/status` | `Map` (`tipo`, `estado`, `documentos`) |
 | `fs.catalogos.listar(opciones)` | `GET /catalogos` | `Map` (`catalogos`, `nota`) |
 | `fs.catalogos.consultar(nombre, new Opciones().q("kilo"))` | `GET /catalogos/{nombre}` | `Map` (`catalogo`, `total`, `datos`) |
+| `fs.catalogos.buscarProductoSunat(q, new Opciones().limite(10))` | `GET /catalogos/productos-sunat` | `Map` (`total`, `hay_mas`, `datos`) |
+| `fs.establecimientos.listar(opciones)` | `GET /establecimientos` | `Map` (`establecimientos`) |
+| `fs.establecimientos.crear(datos, opciones)` | `POST /establecimientos` | `Map` (`establecimiento`) |
 | `fs.guias.emitir(datos, opciones)` | `POST /guias` | `Map` (revisa `enviado`) |
 | `fs.guias.estado(externalId, opciones)` | `GET /guias/{id}/status` | `Map` |
 | `fs.rucs.listar()` | `GET /rucs` | `Map` |
@@ -133,6 +137,38 @@ java.nio.file.Files.write(java.nio.file.Paths.get("comprobante.pdf"), pdf);
 ```
 
 El CDR solo existe cuando SUNAT respondió; si no existe, se lanza `NoEncontrado`.
+
+**PDF en ticket u otro tamaño** (el mismo que imprime el sistema web):
+
+```java
+byte[] ticket = fs.comprobantes.descargar(externalId, "pdf", Opciones.conFormato("ticket")); // 80 mm
+byte[] t58 = fs.comprobantes.descargar(externalId, "pdf", new Opciones().formato("ticket58"));
+```
+
+| `formato` | Tamaño |
+|---|---|
+| *(sin formato)* / `a4` | A4 |
+| `a5` | A5 apaisado |
+| `ticket` / `ticket80` | Ticket de 80 mm |
+| `ticket58` | Ticket de 58 mm |
+| `ticket50` | Ticket de 50 mm |
+
+Sin `formato` el SDK no manda el parámetro (A4 de siempre). `formato` con `"xml"`/`"cdr"` o un valor
+fuera de la tabla lanza `ErrorDeValidacion` (422, `DATOS_INVALIDOS`, `getCampos().get("formato")`)
+**sin hacer la petición**. No cambia el PDF que recibe tu cliente final.
+
+### Locales (anexos)
+
+```java
+Map<String, Object> l = fs.establecimientos.listar(); // cada uno con codigo_anexo, predeterminado y series
+Map<String, Object> nuevo = fs.establecimientos.crear(Json.objeto(
+    "codigo_anexo", "0001", "nombre", "Tienda Miraflores",
+    "direccion", "Av. Larco 123", "ubigeo", "150122"));
+```
+
+`crear` nunca se reintenta automáticamente (no es idempotente): si falla por red, revisa con
+`listar()` antes de volver a llamarlo. Si tu plan no admite más locales lanza `RucNoAutorizado` con
+`getCodigo()` = `LIMITE_ESTABLECIMIENTOS`. Editar o eliminar un local, solo desde el sistema web.
 
 ### Anular facturas y boletas
 
@@ -162,6 +198,11 @@ La respuesta trae también `creditos_restantes` y `credito_cobrado` (y en RUCs d
 Map<String, Object> l = fs.catalogos.listar(); // unidades, afectacion-igv, monedas, ...
 Map<String, Object> u = fs.catalogos.consultar("unidades", new Opciones().q("kilo")); // o por número: consultar("03")
 // usa solo las filas con "activo": true: el RUC valida contra ellas
+
+// Código de producto SUNAT (catálogo 25), por texto o por código (exacto o prefijo):
+Map<String, Object> p = fs.catalogos.buscarProductoSunat("computador", new Opciones().limite(10)); // máx. 50
+// p.get("datos") → [{codigo, descripcion, nivel, categoria}, ...]; "hay_mas": true = afina la búsqueda
+// el código va en "codigo_producto_sunat" de cada ítem al emitir
 ```
 
 `consultar` lee el catálogo del RUC (`ruc` de la llamada o del constructor). Un nombre que no existe

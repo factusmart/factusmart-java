@@ -52,6 +52,9 @@ class ContratoTest {
         METODOS.put("calculateDocument", "comprobantes.calcular");
         METODOS.put("listCatalogs", "catalogos.listar");
         METODOS.put("getCatalog", "catalogos.consultar");
+        METODOS.put("searchSunatProductCodes", "catalogos.buscarProductoSunat");
+        METODOS.put("listEstablishments", "establecimientos.listar");
+        METODOS.put("createEstablishment", "establecimientos.crear");
         // Webhook (sección `webhooks` del yaml): lo manda el API; el SDK solo verifica la firma (método estático).
         METODOS.put("webhookComprobanteEstado", "FactuSmart.verificarFirmaWebhook");
     }
