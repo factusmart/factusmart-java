@@ -11,6 +11,8 @@ package pe.factusmart;
  *   <li>{@code porcentajeIgv}: solo {@code comprobantes.calcular} (18 o 10.5).</li>
  *   <li>{@code q}: solo {@code catalogos.consultar} (búsqueda por código o descripción).</li>
  *   <li>{@code limite}: solo {@code catalogos.buscarProductoSunat} (máx. 50).</li>
+ *   <li>{@code nivel}: solo {@code catalogos.buscarProductoSunat}: {@code segmento}, {@code familia},
+ *       {@code clase} o {@code producto} (el que va en el comprobante).</li>
  *   <li>{@code formato}: solo {@code comprobantes.descargar(id, "pdf", ...)}: {@code a4}, {@code a5},
  *       {@code ticket} (= {@code ticket80}), {@code ticket80}, {@code ticket58}, {@code ticket50}.</li>
  * </ul>
@@ -23,6 +25,7 @@ public final class Opciones {
     private String q;
     private String formato;
     private Integer limite;
+    private String nivel;
 
     public Opciones() {}
 
@@ -72,6 +75,19 @@ public final class Opciones {
 
     public Integer getLimite() {
         return limite;
+    }
+
+    /**
+     * Nivel UNSPSC en {@code catalogos.buscarProductoSunat}: {@code segmento}, {@code familia},
+     * {@code clase} o {@code producto}. Sin nivel no se manda el parámetro.
+     */
+    public Opciones nivel(String nivel) {
+        this.nivel = nivel;
+        return this;
+    }
+
+    public String getNivel() {
+        return nivel;
     }
 
     public String getFormato() {

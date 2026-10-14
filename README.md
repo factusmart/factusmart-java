@@ -108,7 +108,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.anulaciones.estado(ticket, opciones)` | `GET /anulaciones/{ticket}/status` | `Map` (`tipo`, `estado`, `documentos`) |
 | `fs.catalogos.listar(opciones)` | `GET /catalogos` | `Map` (`catalogos`, `nota`) |
 | `fs.catalogos.consultar(nombre, new Opciones().q("kilo"))` | `GET /catalogos/{nombre}` | `Map` (`catalogo`, `total`, `datos`) |
-| `fs.catalogos.buscarProductoSunat(q, new Opciones().limite(10))` | `GET /catalogos/productos-sunat` | `Map` (`total`, `hay_mas`, `datos`) |
+| `fs.catalogos.buscarProductoSunat(q, new Opciones().limite(10).nivel("producto"))` | `GET /catalogos/productos-sunat` | `Map` (`total`, `hay_mas`, `datos`) |
 | `fs.establecimientos.listar(opciones)` | `GET /establecimientos` | `Map` (`establecimientos`) |
 | `fs.establecimientos.crear(datos, opciones)` | `POST /establecimientos` | `Map` (`establecimiento`) |
 | `fs.guias.emitir(datos, opciones)` | `POST /guias` | `Map` (revisa `enviado`) |
@@ -200,7 +200,7 @@ Map<String, Object> u = fs.catalogos.consultar("unidades", new Opciones().q("kil
 // usa solo las filas con "activo": true: el RUC valida contra ellas
 
 // Código de producto SUNAT (catálogo 25), por texto o por código (exacto o prefijo):
-Map<String, Object> p = fs.catalogos.buscarProductoSunat("computador", new Opciones().limite(10)); // máx. 50
+Map<String, Object> p = fs.catalogos.buscarProductoSunat("computador", new Opciones().limite(10).nivel("producto")); // máx. 50; nivel: segmento|familia|clase|producto
 // p.get("datos") → [{codigo, descripcion, nivel, categoria}, ...]; "hay_mas": true = afina la búsqueda
 // el código va en "codigo_producto_sunat" de cada ítem al emitir
 ```

@@ -38,7 +38,7 @@ public final class Catalogos {
         return buscarProductoSunat(q, null);
     }
 
-    /** Igual, con {@code limite} (máx. 50) y/o {@code ruc} en {@link Opciones}. */
+    /** Igual, con {@code limite} (máx. 50), {@code nivel} ({@code segmento|familia|clase|producto}) y/o {@code ruc} en {@link Opciones}. */
     public Map<String, Object> buscarProductoSunat(String q, Opciones opciones) {
         if (q == null || q.trim().isEmpty()) {
             throw new FactuSmartException("catalogos.buscarProductoSunat(q): pasa un texto (ej. \"computador\") o un código (ej. \"4321\").");
@@ -46,6 +46,8 @@ public final class Catalogos {
         return fs.objeto(FactuSmart.Peticion.get("/catalogos/productos-sunat")
                 .query("q", q.trim())
                 .query("limite", opciones != null ? opciones.getLimite() : null)
+                .query("nivel", opciones != null && opciones.getNivel() != null && !opciones.getNivel().trim().isEmpty()
+                        ? opciones.getNivel().trim() : null)
                 .query("ruc", fs.rucDe(opciones))
                 .reintentable(true));
     }

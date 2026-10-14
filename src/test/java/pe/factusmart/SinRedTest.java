@@ -491,6 +491,19 @@ class SinRedTest {
         assertEquals(3, t.peticiones.size());
     }
 
+    @Test
+    void buscarProductoSunatConNivel() {
+        String ok = "{\"success\":true,\"datos\":[]}";
+        Falso t = new Falso().responde(200, ok).responde(200, ok).responde(200, ok);
+        FactuSmart fs = cliente(t);
+        fs.catalogos.buscarProductoSunat("computador", new Opciones().nivel("producto"));
+        fs.catalogos.buscarProductoSunat("43", new Opciones().limite(10).nivel("familia").ruc("20999999999"));
+        fs.catalogos.buscarProductoSunat("computador", new Opciones().nivel(" "));
+        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&nivel=producto&ruc=20123456789", t.peticiones.get(0).getUrl());
+        assertEquals(BASE + "/catalogos/productos-sunat?q=43&limite=10&nivel=familia&ruc=20999999999", t.peticiones.get(1).getUrl());
+        assertEquals(BASE + "/catalogos/productos-sunat?q=computador&ruc=20123456789", t.peticiones.get(2).getUrl(), "sin nivel no se manda");
+    }
+
     // ───────────── 11. descargar con formato (sin red) ─────────────
 
     @Test
