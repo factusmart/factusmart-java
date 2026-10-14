@@ -1,0 +1,105 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'pe.factusmart'
+version = '0.1.0'
+description = 'SDK oficial del API de facturación electrónica de FactuSmart (SUNAT, Perú).'
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+// Cero dependencias en runtime: solo la librería estándar de Java 11+.
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 11
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:all', '-Xlint:-serial']
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+    options.addStringOption('charset', 'UTF-8')
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'factusmart',
+            'Implementation-Version': project.version,
+            'Automatic-Module-Name': 'pe.factusmart'
+        )
+    }
+}
+
+test {
+    useJUnitPlatform {
+        // ./gradlew test -PsoloUnitarias  → sin las pruebas contra el API local.
+        if (project.hasProperty('soloUnitarias')) {
+            excludeTags 'integracion'
+        }
+    }
+    systemProperty 'factusmart.raiz', projectDir.absolutePath
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+        exceptionFormat = 'full'
+    }
+}
+
+// ./gradlew casoComun → escribe resultado_caso_comun.json (caso común de DISENO_SDK.md).
+tasks.register('casoComun', JavaExec) {
+    group = 'verification'
+    description = 'Escribe resultado_caso_comun.json con FactuSmart.calcularComprobante.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'pe.factusmart.CasoComun'
+    args = [file('resultado_caso_comun.json').absolutePath]
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifactId = 'factusmart'
+            from components.java
+            pom {
+                name = 'FactuSmart Java SDK'
+                description = project.description
+                url = 'https://github.com/factusmart/factusmart-java'
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'factusmart'
+                        name = 'FactuSmart'
+                        email = 'factusmart@gmail.com'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/factusmart/factusmart-java.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/factusmart/factusmart-java.git'
+                    url = 'https://github.com/factusmart/factusmart-java'
+                }
+            }
+        }
+    }
+    // Sin repositorios configurados a propósito: todavía no se publica en Maven Central.
+    // Para probar localmente: ./gradlew publishToMavenLocal
+}
