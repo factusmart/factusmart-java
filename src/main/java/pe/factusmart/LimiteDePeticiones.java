@@ -7,6 +7,8 @@ package pe.factusmart;
  *   <li>{@code LIMITE_PETICIONES} ({@code reintentable: true}): límite por minuto; el SDK reintenta solo.</li>
  *   <li>{@code LIMITE_PRUEBAS_DIARIO} ({@code reintentable: false}): tope de 200 operaciones/día en RUCs
  *       demo. No se reintenta; el cupo se reinicia a medianoche (hora de Perú).</li>
+ *   <li>{@code LIMITE_CONSULTAS} ({@code reintentable: false}): se acabó el cupo de consultas RUC/DNI
+ *       ({@code fs.consultas}). No se reintenta; la fecha viene en {@code se_renueva} de {@link #getRespuesta()}.</li>
  * </ul>
  */
 public class LimiteDePeticiones extends FactuSmartException {

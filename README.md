@@ -106,6 +106,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 
 | Método | Endpoint | Devuelve |
 |---|---|---|
+| `fs.raiz()` | `GET /` (sin llave ni RUC) | `Map` (`api`, `docs`, `estado`) |
 | `fs.ping(opciones)` | `GET /ping` | `Map` |
 | `fs.cuenta.saldo()` | `GET /account` | `Map` (`creditos_disponibles`, plan, RUCs) |
 | `fs.series.listar(opciones)` | `GET /series` | `Map` |
@@ -123,6 +124,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.catalogos.listar(opciones)` | `GET /catalogos` | `Map` (`catalogos`, `nota`) |
 | `fs.catalogos.consultar(nombre, new Opciones().q("kilo"))` | `GET /catalogos/{nombre}` | `Map` (`catalogo`, `total`, `datos`) |
 | `fs.catalogos.buscarProductoSunat(q, new Opciones().limite(10).nivel("producto"))` | `GET /catalogos/productos-sunat` | `Map` (`total`, `hay_mas`, `datos`) |
+| `fs.consultas.ruc(numero)` / `dni(numero)` / `documento(tipo, numero)` | `GET /consultas/{tipo}/{numero}` (sin RUC emisor) | `Map` (`nombre`, `direccion`, `consultas_restantes`, ...) |
 | `fs.establecimientos.listar(opciones)` | `GET /establecimientos` | `Map` (`establecimientos`) |
 | `fs.establecimientos.crear(datos, opciones)` | `POST /establecimientos` | `Map` (`establecimiento`) |
 | `fs.guias.emitir(datos, opciones)` | `POST /guias` | `Map` (revisa `enviado`) |
@@ -221,6 +223,22 @@ Map<String, Object> p = fs.catalogos.buscarProductoSunat("computador", new Opcio
 
 `consultar` lee el catálogo del RUC (`ruc` de la llamada o del constructor). Un nombre que no existe
 lanza `NoEncontrado` (la lista válida viene en `e.getRespuesta()`, clave `catalogos_disponibles`).
+
+### Consultar un RUC o DNI
+
+Para llenar los datos del cliente antes de emitir. No gasta créditos ni usa el RUC emisor (no manda
+`ruc`, aunque el cliente tenga uno por defecto).
+
+```java
+Map<String, Object> c = fs.consultas.ruc("20131312955");   // o fs.consultas.dni("12345678")
+c.get("nombre");               // razón social (RUC) o nombres completos (DNI)
+c.get("direccion");            // puede ser null (en DNI casi siempre)
+c.get("consultas_restantes");  // cupo del periodo ("periodo": "mes" | "dia"), se renueva en "se_renueva"
+```
+
+Repetir un número en 30 días responde `desde_cache: true` y no descuenta. Al agotar el cupo lanza
+`LimiteDePeticiones` con `getCodigo()` = `LIMITE_CONSULTAS` (no se reintenta); un número inexistente,
+`NoEncontrado`; uno mal formado, `ErrorDeValidacion`. `503 CONSULTA_NO_DISPONIBLE` se reintenta solo.
 
 ## ¿Calcular en el servidor o local?
 

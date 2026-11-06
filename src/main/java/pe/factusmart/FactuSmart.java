@@ -39,7 +39,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class FactuSmart {
 
     /** Versión del SDK. */
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.2.0";
 
     private static final long ESPERA_MAXIMA_MS = 60_000L;
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
@@ -71,6 +71,8 @@ public final class FactuSmart {
     public final Rucs rucs;
     /** {@code /establecimientos} (locales / anexos del RUC). */
     public final Establecimientos establecimientos;
+    /** {@code /consultas/{tipo}/{numero}} (RUC y DNI; sin RUC emisor). */
+    public final Consultas consultas;
 
     private final String apiKey;
     private final String baseUrl;
@@ -119,6 +121,7 @@ public final class FactuSmart {
         this.guias = new Guias(this);
         this.rucs = new Rucs(this);
         this.establecimientos = new Establecimientos(this);
+        this.consultas = new Consultas(this);
     }
 
     /** Empieza a configurar un cliente. {@code apiKey} y {@code baseUrl} son obligatorias. */
@@ -200,6 +203,16 @@ public final class FactuSmart {
     }
 
     // ───────────── API pública ─────────────
+
+    /**
+     * {@code GET /} — raíz del API: confirma que el servicio responde y dónde está la documentación
+     * ({@code success}, {@code api}, {@code docs}, {@code estado}). No necesita API key ni RUC y no
+     * consume crédito (el SDK manda la llave igual; el API la ignora). Para comprobar tu llave usa
+     * {@link #ping()}.
+     */
+    public Map<String, Object> raiz() {
+        return objeto(Peticion.get("/").reintentable(true));
+    }
 
     /** {@code GET /ping} — prueba la API key. No consume crédito. */
     public Map<String, Object> ping() {

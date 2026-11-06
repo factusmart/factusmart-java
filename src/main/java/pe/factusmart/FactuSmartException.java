@@ -45,6 +45,8 @@ public class FactuSmartException extends RuntimeException {
             "SUNAT_NO_DISPONIBLE",
             "LIMITE_PETICIONES",
             "LIMITE_PRUEBAS_DIARIO",
+            "LIMITE_CONSULTAS",
+            "CONSULTA_NO_DISPONIBLE",
             "ANULACION_MIXTA",
             "ERROR_INTERNO"));
 

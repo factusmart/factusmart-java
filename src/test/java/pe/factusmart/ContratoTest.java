@@ -32,6 +32,7 @@ class ContratoTest {
     static final Map<String, String> METODOS = new LinkedHashMap<>();
 
     static {
+        METODOS.put("apiRoot", "raiz");
         METODOS.put("ping", "ping");
         METODOS.put("getAccount", "cuenta.saldo");
         METODOS.put("listSeries", "series.listar");
@@ -55,6 +56,7 @@ class ContratoTest {
         METODOS.put("searchSunatProductCodes", "catalogos.buscarProductoSunat");
         METODOS.put("listEstablishments", "establecimientos.listar");
         METODOS.put("createEstablishment", "establecimientos.crear");
+        METODOS.put("lookupDocument", "consultas.documento");
         // Webhook (sección `webhooks` del yaml): lo manda el API; el SDK solo verifica la firma (método estático).
         METODOS.put("webhookComprobanteEstado", "FactuSmart.verificarFirmaWebhook");
     }

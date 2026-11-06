@@ -1,5 +1,18 @@
 # Cambios
 
+## 0.2.0 — 2026-11-06
+
+- `fs.consultas.ruc(numero)`, `fs.consultas.dni(numero)` y `fs.consultas.documento(tipo, numero)`
+  (`GET /consultas/{tipo}/{numero}`, operationId `lookupDocument`): nombre, dirección, estado,
+  condición y ubigeo de un RUC o DNI, con `desde_cache`, `consultas_restantes`, `periodo` y
+  `se_renueva`. Nunca mandan el RUC emisor. Un `tipo` que no sea `ruc`/`dni` lanza
+  `ErrorDeValidacion` 422 `DATOS_INVALIDOS` sin hacer la petición.
+- 429 `LIMITE_CONSULTAS` (`reintentable: false`) no se reintenta; `LIMITE_PETICIONES` y
+  503 `CONSULTA_NO_DISPONIBLE` sí, como cualquier GET.
+- `fs.raiz()` (`GET /`, operationId `apiRoot`): confirma que el API responde, sin llave ni RUC.
+- `FactuSmartException.CODIGOS_DE_ERROR` suma `LIMITE_CONSULTAS` y `CONSULTA_NO_DISPONIBLE`.
+- `tests/fixtures/openapi.yaml` actualizado a la spec actual.
+
 ## 0.1.0 — 2026-10-14
 
 Primera versión. Mismo comportamiento que el SDK de Node 1.1.0 / PHP 0.2.0 / Python 0.2.0:

@@ -554,4 +554,116 @@ class SinRedTest {
         assertEquals(0L, FactuSmart.leerSegundosDeEspera("Wed, 21 Oct 2015 07:28:00 GMT", ""));
         assertNull(FactuSmart.leerSegundosDeEspera(null, "nada"));
     }
+
+    // ───────────── Consultas RUC / DNI ─────────────
+
+    static final String RUC_OK = "{\"success\":true,\"tipo\":\"ruc\",\"numero\":\"20131312955\","
+            + "\"nombre\":\"SUPERINTENDENCIA NACIONAL DE ADUANAS Y DE ADMINISTRACION TRIBUTARIA - SUNAT\","
+            + "\"direccion\":\"AV. GARCILASO DE LA VEGA - Nro: 1472  - LIMA\",\"estado\":null,\"condicion\":null,"
+            + "\"ubigeo\":\"150101\",\"desde_cache\":false,\"consultas_restantes\":29999,\"periodo\":\"mes\","
+            + "\"se_renueva\":\"2026-11-23\"}";
+
+    @Test
+    void consultasRucYDniSinRucEmisorYParseo() {
+        Falso t = new Falso().responde(200, RUC_OK)
+                .responde(200, "{\"success\":true,\"tipo\":\"dni\",\"numero\":\"12345678\",\"nombre\":\"JUAN CARLOS PEREZ GARCIA\","
+                        + "\"direccion\":null,\"estado\":null,\"condicion\":null,\"ubigeo\":null,\"desde_cache\":true,"
+                        + "\"consultas_restantes\":49,\"periodo\":\"dia\",\"se_renueva\":\"2026-11-07\"}")
+                .responde(200, RUC_OK);
+        FactuSmart fs = cliente(t); // el cliente tiene RUC por defecto: no debe viajar
+
+        Map<String, Object> r = fs.consultas.ruc("20131312955");
+        assertEquals("GET", t.peticiones.get(0).getMetodo());
+        assertEquals(BASE + "/consultas/ruc/20131312955", t.peticiones.get(0).getUrl());
+        assertEquals(Boolean.TRUE, r.get("success"));
+        assertEquals("ruc", r.get("tipo"));
+        assertEquals("20131312955", r.get("numero"));
+        assertTrue(((String) r.get("nombre")).startsWith("SUPERINTENDENCIA"));
+        assertEquals("150101", r.get("ubigeo"));
+        assertTrue(r.containsKey("estado"));
+        assertNull(r.get("estado"));
+        assertNull(r.get("condicion"));
+        assertEquals(Boolean.FALSE, r.get("desde_cache"));
+        assertEquals(29999, ((Number) r.get("consultas_restantes")).intValue());
+        assertEquals("mes", r.get("periodo"));
+        assertEquals("2026-11-23", r.get("se_renueva"));
+
+        Map<String, Object> d = fs.consultas.dni(" 12345678 ");
+        assertEquals(BASE + "/consultas/dni/12345678", t.peticiones.get(1).getUrl());
+        assertNull(d.get("direccion"));
+        assertEquals(Boolean.TRUE, d.get("desde_cache"));
+        assertEquals("dia", d.get("periodo"));
+
+        fs.consultas.documento("RUC", "20131312955");
+        assertEquals(BASE + "/consultas/ruc/20131312955", t.peticiones.get(2).getUrl());
+
+        for (SolicitudHttp p : t.peticiones) {
+            assertFalse(p.getUrl().contains("ruc="), "no lleva ?ruc=: " + p.getUrl());
+            assertNull(p.getCabecera("X-RUC"));
+            assertEquals("clave", p.getCabecera("X-API-Key"));
+            assertEquals("factusmart-java/" + FactuSmart.VERSION, p.getCabecera("User-Agent"));
+        }
+    }
+
+    @Test
+    void consultasValidaElTipoSinPeticion() {
+        Falso t = new Falso();
+        FactuSmart fs = cliente(t);
+        ErrorDeValidacion e = assertThrows(ErrorDeValidacion.class, () -> fs.consultas.documento("ce", "001234567"));
+        assertEquals(422, e.getStatus());
+        assertEquals("DATOS_INVALIDOS", e.getCodigo());
+        assertEquals(Boolean.FALSE, e.getReintentable());
+        assertTrue(e.getCampos().containsKey("tipo"));
+        assertThrows(FactuSmartException.class, () -> fs.consultas.ruc(" "));
+        assertThrows(FactuSmartException.class, () -> fs.consultas.dni(null));
+        assertTrue(t.peticiones.isEmpty());
+    }
+
+    @Test
+    void limiteConsultasNoSeReintenta() {
+        Falso t = new Falso().responde(RespuestaHttp.de(429,
+                "{\"success\":false,\"message\":\"Se acabó tu cupo de consultas DNI/RUC de este mes.\","
+                        + "\"codigo\":\"LIMITE_CONSULTAS\",\"reintentable\":false,\"consultas_restantes\":0,"
+                        + "\"limite_consultas\":30000,\"periodo\":\"mes\",\"se_renueva\":\"2026-11-23\"}"));
+        LimiteDePeticiones e = assertThrows(LimiteDePeticiones.class, () -> cliente(t).consultas.ruc("20131312955"));
+        assertEquals(1, t.peticiones.size());
+        assertTrue(esperas.isEmpty());
+        assertEquals(429, e.getStatus());
+        assertEquals("LIMITE_CONSULTAS", e.getCodigo());
+        assertFalse(e.isReintentable());
+        assertEquals("2026-11-23", ((Map<?, ?>) e.getRespuesta()).get("se_renueva"));
+    }
+
+    @Test
+    void consultasReintentaLimitePeticionesY503PeroNo404Ni422() {
+        Falso t = new Falso()
+                .responde(429, "{\"success\":false,\"message\":\"Demasiadas peticiones. Espera 2 segundos.\","
+                        + "\"codigo\":\"LIMITE_PETICIONES\",\"reintentable\":true}")
+                .responde(503, "{\"success\":false,\"message\":\"Ni SUNAT ni el respaldo respondieron.\","
+                        + "\"codigo\":\"CONSULTA_NO_DISPONIBLE\",\"reintentable\":true}")
+                .responde(200, RUC_OK)
+                .responde(404, "{\"success\":false,\"message\":\"No se encontró el RUC.\",\"codigo\":\"NO_ENCONTRADO\",\"reintentable\":false}")
+                .responde(422, "{\"success\":false,\"message\":\"RUC inválido.\",\"codigo\":\"DATOS_INVALIDOS\",\"reintentable\":false,"
+                        + "\"campos\":{\"numero\":[\"El RUC no es válido.\"]}}");
+        FactuSmart fs = cliente(t);
+        assertEquals("ruc", fs.consultas.ruc("20131312955").get("tipo"));
+        assertEquals(3, t.peticiones.size());
+        assertEquals(Arrays.asList(2000L, 2000L), esperas);
+
+        NoEncontrado nf = assertThrows(NoEncontrado.class, () -> fs.consultas.ruc("20000000001"));
+        assertEquals("NO_ENCONTRADO", nf.getCodigo());
+        ErrorDeValidacion ev = assertThrows(ErrorDeValidacion.class, () -> fs.consultas.ruc("12345678901"));
+        assertEquals(Collections.singletonList("El RUC no es válido."), ev.getCampos().get("numero"));
+        assertEquals(5, t.peticiones.size());
+    }
+
+    @Test
+    void raizSinRuc() {
+        Falso t = new Falso().responde(200, "{\"success\":true,\"api\":\"FactuSmart API de facturación\","
+                + "\"docs\":\"https://factusmart.pe/api-facturacion-electronica/docs\",\"estado\":\"ok\"}");
+        Map<String, Object> r = cliente(t).raiz();
+        assertEquals("ok", r.get("estado"));
+        assertEquals("GET", t.peticiones.get(0).getMetodo());
+        assertEquals(BASE + "/", t.peticiones.get(0).getUrl());
+    }
 }
