@@ -47,6 +47,9 @@ public class FactuSmartException extends RuntimeException {
             "LIMITE_PRUEBAS_DIARIO",
             "LIMITE_CONSULTAS",
             "CONSULTA_NO_DISPONIBLE",
+            "LIMITE_VERIFICACIONES",
+            "CONFIRMAR_CAMBIO_ENTORNO",
+            "PSE_NO_DISPONIBLE",
             "ANULACION_MIXTA",
             "ERROR_INTERNO"));
 

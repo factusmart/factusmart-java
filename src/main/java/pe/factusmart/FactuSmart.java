@@ -40,7 +40,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class FactuSmart {
 
     /** Versión del SDK. */
-    public static final String VERSION = "0.4.0";
+    public static final String VERSION = "0.5.0";
 
     private static final long ESPERA_MAXIMA_MS = 60_000L;
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
@@ -423,7 +423,10 @@ public final class FactuSmart {
             // `reintentable: false` en el cuerpo manda sobre la regla por HTTP (ej. 429 LIMITE_PRUEBAS_DIARIO).
             // Sin el campo (servidor anterior) se usa la regla por HTTP. `reintentable: true` solo cuenta en
             // operaciones reintentables: en las demás maxIntentos es 1 y `quedan` siempre es false.
-            boolean transitorio = !Boolean.FALSE.equals(error.getReintentable())
+            // 429 LIMITE_VERIFICACIONES es reintentable, pero tras una espera larga (hasta 1 h): no se reintenta
+            // solo; la excepción trae getSegundosDeEspera() (Retry-After) para que el integrador decida.
+            boolean transitorio = !"LIMITE_VERIFICACIONES".equals(error.getCodigo())
+                    && !Boolean.FALSE.equals(error.getReintentable())
                     && (error instanceof LimiteDePeticiones
                         || status == 502 || status == 503 || status == 504
                         || (status == 409 && p.reintentarEn409)
@@ -554,7 +557,7 @@ public final class FactuSmart {
 
         Object codigo = cuerpo instanceof Map ? ((Map<?, ?>) cuerpo).get("codigo") : null;
         // Servidores anteriores convertían el 429 del limitador en un 500 "Too Many Attempts.".
-        boolean esLimite = status == 429 || "LIMITE_PETICIONES".equals(codigo)
+        boolean esLimite = status == 429 || "LIMITE_PETICIONES".equals(codigo) || "LIMITE_VERIFICACIONES".equals(codigo)
                 || (status == 500 && TOO_MANY.matcher(mensaje).find());
         if (esLimite) {
             return new LimiteDePeticiones(mensaje, status, cuerpo, leerSegundosDeEspera(retryAfter, mensaje));

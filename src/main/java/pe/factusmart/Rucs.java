@@ -99,35 +99,71 @@ public final class Rucs {
      * No se reintenta automáticamente.
      */
     public Map<String, Object> configurarSunat(String ruc, String usuarioSol, String claveSol, String entorno) {
+        return configurarSunat(ruc, usuarioSol, claveSol, entorno, false);
+    }
+
+    /**
+     * Igual que {@link #configurarSunat(String, String, String, String)} con {@code confirmar}: pasar un RUC
+     * que ya emite en <b>producción</b> a {@code prueba} exige {@code confirmar = true} (sin eso el API
+     * responde 422 {@code CONFIRMAR_CAMBIO_ENTORNO}, que no se reintenta). Los comprobantes en prueba no
+     * tienen validez y usan la misma numeración. {@code "confirmar": true} solo se manda si es {@code true}.
+     */
+    public Map<String, Object> configurarSunat(String ruc, String usuarioSol, String claveSol, String entorno,
+                                               boolean confirmar) {
         String r = FactuSmart.segmento(ruc, "rucs.configurarSunat(ruc, usuarioSol, claveSol, entorno): falta el RUC.");
         Map<String, Object> datos = new LinkedHashMap<>();
         datos.put("usuario_sol", usuarioSol);
         datos.put("clave_sol", claveSol);
         datos.put("entorno", entorno);
+        if (confirmar) datos.put("confirmar", Boolean.TRUE);
         return enviarSunat(r, datos);
     }
 
     /** {@code PUT /rucs/{ruc}/sunat} solo con el entorno ({@code prueba} | {@code produccion}). */
     public Map<String, Object> configurarSunat(String ruc, String entorno) {
+        return configurarSunat(ruc, entorno, false);
+    }
+
+    /**
+     * {@code PUT /rucs/{ruc}/sunat} solo con el entorno y {@code confirmar}. Ej.: pasar un RUC de producción a
+     * prueba: {@code configurarSunat(ruc, "prueba", true)}; la respuesta trae {@code aviso}.
+     */
+    public Map<String, Object> configurarSunat(String ruc, String entorno, boolean confirmar) {
         if (entorno == null || entorno.trim().isEmpty()) {
             throw new FactuSmartException("rucs.configurarSunat(ruc, entorno): falta el entorno (prueba | produccion).");
         }
-        return configurarSunat(ruc, null, null, entorno);
+        return configurarSunat(ruc, null, null, entorno, confirmar);
     }
 
     /**
      * {@code PUT /rucs/{ruc}/sunat} con cualquier combinación de campos: {@code usuario_sol} +
      * {@code clave_sol}, {@code entorno} ({@code prueba} | {@code produccion} | {@code demo}),
-     * {@code modalidad} ({@code propio} = tu certificado, directo a SUNAT · {@code pse} = Smart PSE firma y
-     * envía) y {@code pse_usuario} + {@code pse_clave} (credenciales CPE de la empresa en Smart PSE). Los
+     * {@code modalidad}, {@code pse_usuario} + {@code pse_clave} y {@code confirmar} ({@code Boolean}). Los
      * valores nulos no se mandan. Las claves ({@code clave_sol}, {@code pse_clave}) se ocultan con
      * {@code ***} en cualquier error.
      *
+     * <p>Dos caminos para producción:
+     * <ul>
+     *   <li>{@code modalidad: propio} — tu certificado digital ({@link #subirCertificado(String, Path, String)})
+     *       + usuario secundario SOL; se envía directo a SUNAT.</li>
+     *   <li>{@code modalidad: pse} — Smart PSE firma y envía (es el único PSE). <b>No hace falta
+     *       certificado</b>, pero sí {@code pse_usuario} (el {@code usuario_secundaria} de Smart PSE) y
+     *       {@code pse_clave} (su {@code token_acceso}) y, en producción, también el usuario SOL (lo usan
+     *       Consultar CDR y el auto-arreglo del 1033). Si el RUC aún no tiene credenciales de Smart PSE,
+     *       {@code pse_usuario} y {@code pse_clave} son obligatorios.</li>
+     * </ul>
+     * Antes de emitir en producción con Smart PSE, el contribuyente debe <b>designar a Smart PSE como su PSE
+     * en SUNAT</b> (Clave SOL → Empresas → PSE). {@link #verificar(String)} no puede comprobarlo.
+     *
+     * <p>{@code confirmar: true} es obligatorio para pasar un RUC de producción a prueba (si no, 422
+     * {@code CONFIRMAR_CAMBIO_ENTORNO}). Otros errores: 403 {@code RUC_DESACTIVADO} (RUC bloqueado o plan
+     * vencido), 429 {@code LIMITE_VERIFICACIONES} (más de 10 por hora con {@code clave_sol} o credenciales
+     * PSE; espera {@code getSegundosDeEspera()}) y 503 {@code PSE_NO_DISPONIBLE} (Smart PSE no respondió en
+     * producción; no se guardó nada).
+     *
      * <p>La respuesta es la misma de {@link #configuracion(String)} más {@code aviso} (texto, opcional):
      * {@code modalidad} ({@code propio} | {@code pse}), {@code pse} ({@code null} salvo con Smart PSE:
-     * {@code proveedor}, {@code configurado}, {@code usuario} enmascarado) y, con Smart PSE, el aviso de
-     * que el contribuyente debe <b>designar a Smart PSE como su PSE en SUNAT</b> con su Clave SOL.
-     * No se reintenta automáticamente.
+     * {@code proveedor}, {@code configurado}, {@code usuario} enmascarado). No se reintenta automáticamente.
      */
     public Map<String, Object> configurarSunat(String ruc, Map<String, ?> datos) {
         String r = FactuSmart.segmento(ruc, "rucs.configurarSunat(ruc, datos): falta el RUC.");
@@ -136,6 +172,18 @@ public final class Rucs {
                     + "modalidad o pse_usuario y pse_clave.");
         }
         return enviarSunat(r, new LinkedHashMap<String, Object>(datos));
+    }
+
+    /** Igual que {@link #configurarSunat(String, Map)} añadiendo {@code "confirmar": true} si {@code confirmar} es true. */
+    public Map<String, Object> configurarSunat(String ruc, Map<String, ?> datos, boolean confirmar) {
+        String r = FactuSmart.segmento(ruc, "rucs.configurarSunat(ruc, datos, confirmar): falta el RUC.");
+        if (datos == null) {
+            throw new FactuSmartException("rucs.configurarSunat(ruc, datos, confirmar): pasa usuario_sol y clave_sol, "
+                    + "entorno, modalidad o pse_usuario y pse_clave.");
+        }
+        Map<String, Object> copia = new LinkedHashMap<String, Object>(datos);
+        if (confirmar) copia.put("confirmar", Boolean.TRUE);
+        return enviarSunat(r, copia);
     }
 
     /**
@@ -170,7 +218,12 @@ public final class Rucs {
             }
             cuerpo.put(e.getKey(), v);
         }
-        if (cuerpo.isEmpty()) {
+        Object confirmar = cuerpo.get("confirmar");
+        if (confirmar != null && !(confirmar instanceof Boolean)) {
+            throw new FactuSmartException("rucs.configurarSunat: confirmar debe ser true o false.");
+        }
+        if (Boolean.FALSE.equals(confirmar)) cuerpo.remove("confirmar");
+        if (cuerpo.isEmpty() || (cuerpo.size() == 1 && cuerpo.containsKey("confirmar"))) {
             throw new FactuSmartException("rucs.configurarSunat: no hay nada que guardar. Pasa usuarioSol y claveSol, "
                     + "entorno (prueba | produccion), modalidad (propio | pse) o pse_usuario y pse_clave.");
         }
@@ -202,7 +255,12 @@ public final class Rucs {
      * sin emitir nada ({@code listo_para_emitir}, {@code modalidad}, {@code checks.certificado},
      * {@code checks.sol} y, con Smart PSE, {@code checks.pse}: token de prueba con las credenciales PSE
      * guardadas; {@code ok: false} = rechazadas o faltan, {@code ok: null} = Smart PSE no respondió). No
-     * consume crédito.
+     * consume crédito. No comprueba que Smart PSE esté designado como PSE en SUNAT.
+     *
+     * <p>Máximo 10 verificaciones por hora por llave y RUC: al pasarse, 429 {@code LIMITE_VERIFICACIONES}
+     * ({@link LimiteDePeticiones}, {@code isReintentable()} true). El SDK no lo reintenta solo porque la espera
+     * es larga: usa {@code getSegundosDeEspera()} (cabecera Retry-After). Con el RUC bloqueado o el plan
+     * vencido: 403 {@code RUC_DESACTIVADO}.
      */
     public Map<String, Object> verificar(String ruc) {
         String r = FactuSmart.segmento(ruc, "rucs.verificar(ruc): falta el RUC.");
@@ -212,7 +270,11 @@ public final class Rucs {
     /**
      * {@code GET /rucs/{ruc}/configuracion} — entorno, certificado (vencimiento), usuario SOL
      * enmascarado, canal de envío, {@code modalidad} ({@code propio} | {@code pse}), {@code pse}
-     * ({@code null} salvo con Smart PSE) y qué falta para producción ({@code faltantes}). No llama a SUNAT.
+     * ({@code null} salvo con Smart PSE) y qué falta para producción ({@code faltantes}; entre ellos
+     * {@code certificado_otro_ruc}: el certificado instalado no es de este RUC, y {@code sol}, que también
+     * falta con Smart PSE en producción). Puede traer {@code aviso} (recordatorio de designar a Smart PSE en
+     * SUNAT, o «El certificado vence el AAAA-MM-DD.»). No llama a SUNAT. Sigue abierto aunque el RUC esté
+     * desactivado.
      */
     public Map<String, Object> configuracion(String ruc) {
         String r = FactuSmart.segmento(ruc, "rucs.configuracion(ruc): falta el RUC.");

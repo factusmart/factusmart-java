@@ -9,6 +9,10 @@ package pe.factusmart;
  *       demo. No se reintenta; el cupo se reinicia a medianoche (hora de Perú).</li>
  *   <li>{@code LIMITE_CONSULTAS} ({@code reintentable: false}): se acabó el cupo de consultas RUC/DNI
  *       ({@code fs.consultas}). No se reintenta; la fecha viene en {@code se_renueva} de {@link #getRespuesta()}.</li>
+ *   <li>{@code LIMITE_VERIFICACIONES} ({@code reintentable: true}): más de 10 verificaciones por hora para la
+ *       misma llave y RUC ({@code fs.rucs.verificar} y {@code fs.rucs.configurarSunat} con clave SOL o
+ *       credenciales PSE). El SDK no lo reintenta solo (la espera es larga): espera
+ *       {@link #getSegundosDeEspera()} (Retry-After) y repite.</li>
  * </ul>
  */
 public class LimiteDePeticiones extends FactuSmartException {

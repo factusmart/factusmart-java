@@ -968,4 +968,96 @@ class SinRedTest {
         assertEquals(Boolean.TRUE, ((Map<?, ?>) checks.get("pse")).get("ok"));
         assertNull(((Map<?, ?>) checks.get("certificado")).get("ok"));
     }
+
+    // ───────────── 0.5.0: confirmar y códigos nuevos de la configuración del RUC ─────────────
+
+    @Test
+    void confirmarSoloSeMandaCuandoEsTrue() {
+        Falso t = new Falso();
+        for (int i = 0; i < 6; i++) t.responde(200, CONFIG_PROPIO);
+        FactuSmart fs = cliente(t);
+
+        fs.rucs.configurarSunat("20777666555", "prueba", true);
+        fs.rucs.configurarSunat("20777666555", "prueba", false);
+        fs.rucs.configurarSunat("20777666555", "prueba");
+        fs.rucs.configurarSunat("20777666555", "FACTURA1", "MiClaveSol9", "prueba", true);
+        fs.rucs.configurarSunat("20777666555", Json.objeto("entorno", "prueba"), true);
+        fs.rucs.configurarSunat("20777666555", Json.objeto("entorno", "prueba", "confirmar", false));
+        assertEquals("{\"entorno\":\"prueba\",\"confirmar\":true}", t.peticiones.get(0).getCuerpoTexto());
+        assertEquals("{\"entorno\":\"prueba\"}", t.peticiones.get(1).getCuerpoTexto());
+        assertEquals("{\"entorno\":\"prueba\"}", t.peticiones.get(2).getCuerpoTexto());
+        assertEquals("{\"usuario_sol\":\"FACTURA1\",\"clave_sol\":\"MiClaveSol9\",\"entorno\":\"prueba\",\"confirmar\":true}",
+                t.peticiones.get(3).getCuerpoTexto());
+        assertEquals("{\"entorno\":\"prueba\",\"confirmar\":true}", t.peticiones.get(4).getCuerpoTexto());
+        assertEquals("{\"entorno\":\"prueba\"}", t.peticiones.get(5).getCuerpoTexto());
+
+        // Solo confirmar no es nada que guardar; confirmar que no es booleano tampoco: sin petición.
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", Json.objeto(), true));
+        assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSunat("20777666555", Json.objeto("entorno", "prueba", "confirmar", "si")));
+        assertEquals(6, t.peticiones.size());
+    }
+
+    @Test
+    void confirmarCambioEntornoEs422NoReintentable() {
+        Falso t = new Falso().responde(422, "{\"success\":false,\"message\":\"El RUC emite en producción. Los comprobantes "
+                + "en prueba no tienen validez y usan la misma numeración. Repite con confirmar: true.\","
+                + "\"codigo\":\"CONFIRMAR_CAMBIO_ENTORNO\",\"reintentable\":false}");
+        ErrorDeValidacion e = assertThrows(ErrorDeValidacion.class,
+                () -> cliente(t).rucs.configurarSunat("20777666555", "prueba"));
+        assertEquals("CONFIRMAR_CAMBIO_ENTORNO", e.getCodigo());
+        assertFalse(e.isReintentable());
+        assertEquals(1, t.peticiones.size());
+        assertTrue(FactuSmartException.CODIGOS_DE_ERROR.containsAll(
+                Arrays.asList("LIMITE_VERIFICACIONES", "CONFIRMAR_CAMBIO_ENTORNO", "PSE_NO_DISPONIBLE", "RUC_DESACTIVADO")));
+    }
+
+    @Test
+    void limiteVerificacionesTraeRetryAfterYNoSeReintentaSolo() {
+        Map<String, List<String>> cab = new LinkedHashMap<>();
+        cab.put("Retry-After", Collections.singletonList("1800"));
+        Falso t = new Falso().responde(new RespuestaHttp(429, cab, ("{\"success\":false,\"message\":\"Hiciste más de 10 "
+                + "verificaciones en una hora para este RUC. Espera 1800 segundos e intenta de nuevo.\",\"retry_after\":1800,"
+                + "\"codigo\":\"LIMITE_VERIFICACIONES\",\"reintentable\":true}").getBytes(StandardCharsets.UTF_8)));
+        LimiteDePeticiones e = assertThrows(LimiteDePeticiones.class, () -> cliente(t).rucs.verificar("20777666555"));
+        assertEquals(1, t.peticiones.size());
+        assertTrue(esperas.isEmpty());
+        assertEquals("LIMITE_VERIFICACIONES", e.getCodigo());
+        assertTrue(e.isReintentable());
+        assertEquals(Long.valueOf(1800L), e.getSegundosDeEspera());
+    }
+
+    @Test
+    void rucDesactivadoYPseNoDisponible() {
+        Falso t = new Falso()
+                .responde(403, "{\"success\":false,\"message\":\"Este RUC está desactivado o su plan venció. Reactívalo antes "
+                        + "de configurarlo.\",\"codigo\":\"RUC_DESACTIVADO\",\"reintentable\":false}")
+                .responde(503, "{\"success\":false,\"message\":\"Smart PSE no respondió al comprobar las credenciales. No se "
+                        + "guardó ningún cambio. Intenta de nuevo en unos minutos.\",\"codigo\":\"PSE_NO_DISPONIBLE\",\"reintentable\":true}");
+        FactuSmart fs = cliente(t);
+        RucNoAutorizado d = assertThrows(RucNoAutorizado.class, () -> fs.rucs.verificar("20777666555"));
+        assertEquals("RUC_DESACTIVADO", d.getCodigo());
+        assertEquals(1, t.peticiones.size());
+
+        FactuSmartException p = assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSmartPse("20777666555", "FURZQQ7F", "379VMR6U", "produccion"));
+        assertEquals(503, p.getStatus());
+        assertEquals("PSE_NO_DISPONIBLE", p.getCodigo());
+        assertTrue(p.isReintentable());
+        assertFalse(p.toString().contains("379VMR6U"));
+        assertEquals(2, t.peticiones.size()); // el PUT no se reintenta solo
+    }
+
+    @Test
+    void configuracionLeeFaltantesNuevosYAviso() {
+        Falso t = new Falso().responde(200, "{\"success\":true,\"ruc\":\"20777666555\",\"nombre\":\"X\","
+                + "\"entorno\":\"produccion\",\"certificado\":{\"instalado\":true,\"vence\":\"2026-11-30\","
+                + "\"dias_para_vencer\":20},\"sol\":{\"configurado\":false,\"usuario\":null},\"envio\":\"sunat\","
+                + "\"modalidad\":\"propio\",\"pse\":null,\"listo_para_produccion\":false,"
+                + "\"faltantes\":[\"certificado_otro_ruc\",\"sol\"],\"aviso\":\"El certificado vence el 2026-11-30.\"}");
+        Map<String, Object> r = cliente(t).rucs.configuracion("20777666555");
+        assertEquals(Arrays.asList("certificado_otro_ruc", "sol"), r.get("faltantes"));
+        assertEquals("El certificado vence el 2026-11-30.", r.get("aviso"));
+        assertEquals("propio", r.get("modalidad"));
+    }
 }

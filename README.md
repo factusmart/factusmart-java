@@ -10,22 +10,22 @@ IGV y los totales, consulta los catálogos SUNAT, y descarga el PDF, el XML firm
 
 ## Instalar
 
-Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.1.0.jar` desde la release
-[v0.1.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.1.0) y agrégalo al
+Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.5.0.jar` desde la release
+[v0.5.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.5.0) y agrégalo al
 classpath de tu proyecto.
 
 Gradle (guarda el `.jar` en la carpeta `libs/` de tu proyecto):
 
 ```groovy
 dependencies {
-    implementation files('libs/factusmart-0.1.0.jar')
+    implementation files('libs/factusmart-0.5.0.jar')
 }
 ```
 
 Maven: instálalo en tu repositorio local una sola vez…
 
 ```bash
-mvn install:install-file -Dfile=factusmart-0.1.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.1.0 -Dpackaging=jar
+mvn install:install-file -Dfile=factusmart-0.5.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.5.0 -Dpackaging=jar
 ```
 
 …y luego decláralo como cualquier dependencia:
@@ -34,11 +34,11 @@ mvn install:install-file -Dfile=factusmart-0.1.0.jar -DgroupId=pe.factusmart -Da
 <dependency>
   <groupId>pe.factusmart</groupId>
   <artifactId>factusmart</artifactId>
-  <version>0.1.0</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
-Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.1.0.jar MiApp.java`.
+Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.5.0.jar MiApp.java`.
 
 ## Ejemplo en 10 líneas
 
@@ -248,7 +248,17 @@ Repetir un número en 30 días responde `desde_cache: true` y no descuenta. Al a
 ### Configurar un RUC por API (certificado, SOL y entorno)
 
 Para dejar listo un RUC de tu cuenta sin entrar al panel. El RUC va en la ruta: estas llamadas no
-mandan `X-RUC` ni `?ruc=`. No gastan créditos. La llave de **prueba** (`fs_test_…`) puede usar
+mandan `X-RUC` ni `?ruc=`. No gastan créditos.
+
+Hay **dos caminos** para emitir en producción (campo `modalidad`):
+
+| `modalidad` | Qué necesitas | Quién firma y envía |
+|---|---|---|
+| `propio` | Certificado digital (`subirCertificado`) + usuario secundario SOL | Tú, directo a SUNAT |
+| `pse` | Credenciales de **Smart PSE** (`pse_usuario` = `usuario_secundaria`, `pse_clave` = `token_acceso`) + usuario SOL. **Sin certificado** | Smart PSE (el único PSE) |
+
+Con `pse`, antes de emitir en producción el contribuyente debe **designar a Smart PSE como su PSE en
+SUNAT** (Clave SOL → Empresas → PSE). `verificar` no puede comprobarlo. La llave de **prueba** (`fs_test_…`) puede usar
 `verificar` y `configuracion`, pero no instalar el certificado ni cambiar SOL o entorno
 (`RucNoAutorizado` 403, código `SIN_PERMISO`).
 
@@ -264,6 +274,10 @@ Map<String, Object> c = fs.rucs.subirCertificado(ruc, Paths.get("certificado.pfx
 fs.rucs.configurarSunat(ruc, "FACTURA1", "ClaveSol9", null);
 fs.rucs.configurarSunat(ruc, "produccion");              // solo el entorno: "prueba" | "produccion"
 
+// Volver de producción a prueba exige confirmar (si no: 422 CONFIRMAR_CAMBIO_ENTORNO).
+// Los comprobantes en prueba no tienen validez y usan la misma numeración.
+fs.rucs.configurarSunat(ruc, "prueba", true);            // la respuesta trae "aviso"
+
 // 3. Prueba real contra SUNAT, sin emitir nada.
 Map<String, Object> v = fs.rucs.verificar(ruc);
 v.get("listo_para_emitir");                              // true / false; detalle en v.get("checks")
@@ -271,7 +285,21 @@ v.get("listo_para_emitir");                              // true / false; detall
 // Ver cómo quedó (nunca devuelve claves; el usuario SOL viene enmascarado).
 Map<String, Object> cfg = fs.rucs.configuracion(ruc);
 cfg.get("faltantes");                                    // ej. [certificado, sol]
+cfg.get("aviso");                                        // opcional: designar Smart PSE, certificado por vencer
 ```
+
+`faltantes` puede traer `certificado`, `certificado_vencido`, `certificado_sin_clave_privada`,
+`certificado_otro_ruc` (el certificado instalado no es de este RUC), `sol` (también con `pse` en
+producción) y `pse_credenciales`.
+
+Errores propios de estas llamadas:
+
+| HTTP | `getCodigo()` | Qué pasó |
+|---|---|---|
+| 403 | `RUC_DESACTIVADO` | RUC bloqueado o plan vencido (certificado, sunat y verificar). `configuracion` sigue abierto |
+| 429 | `LIMITE_VERIFICACIONES` | Más de 10 verificaciones por hora por llave y RUC (`verificar`, y `configurarSunat` con clave SOL o credenciales PSE). Reintentable tras `getSegundosDeEspera()` (Retry-After); el SDK no lo reintenta solo porque la espera es larga |
+| 422 | `CONFIRMAR_CAMBIO_ENTORNO` | Pasar de producción a prueba sin `confirmar`. No reintentable: repite con `confirmar = true` |
+| 503 | `PSE_NO_DISPONIBLE` | Smart PSE no respondió con el RUC en producción; no se guardó nada. Reintenta más tarde |
 
 - Clave incorrecta, certificado vencido o de otro RUC → `ErrorDeValidacion` (422); el motivo está en
   `getMensaje()` y en `getCampos()`. Pasar a `produccion` sin certificado o sin SOL también da 422
@@ -300,8 +328,10 @@ Map<?, ?> checks = (Map<?, ?>) fs.rucs.verificar(ruc).get("checks");
 - **Sin la designación en SUNAT (Clave SOL del contribuyente), SUNAT rechaza los comprobantes.**
 - `pse_usuario` y `pse_clave` van juntos; `pse_clave` se oculta con `***` en cualquier error, igual que
   la clave SOL. Si Smart PSE rechaza las credenciales → `ErrorDeValidacion` (422) y no se guarda nada.
-- El usuario SOL es opcional pero recomendado (guías y consultas a SUNAT). Para volver a tu
-  certificado: `configurarSunat(ruc, Json.objeto("modalidad", "propio"))`.
+- Si el RUC aún no tiene credenciales de Smart PSE, `pse_usuario` y `pse_clave` son obligatorios.
+- En **producción** el usuario SOL también es obligatorio con `pse` (lo usan Consultar CDR y el
+  auto-arreglo del 1033); en prueba es opcional. Para volver a tu certificado:
+  `configurarSunat(ruc, Json.objeto("modalidad", "propio"))`.
 
 ## ¿Calcular en el servidor o local?
 
@@ -396,6 +426,9 @@ otros y manda `ERROR_<status>` como genérico, así que no asumas una lista cerr
 | `SUNAT_NO_DISPONIBLE` | SUNAT no responde (reintentable) |
 | `LIMITE_PETICIONES` | Demasiadas peticiones por minuto (reintentable) |
 | `LIMITE_PRUEBAS_DIARIO` | 429 **no reintentable**: tope de 200 operaciones/día en RUCs demo |
+| `LIMITE_VERIFICACIONES` | 429: más de 10 verificaciones por hora para un RUC (espera `getSegundosDeEspera()`) |
+| `CONFIRMAR_CAMBIO_ENTORNO` | 422: pasar de producción a prueba sin `confirmar` |
+| `PSE_NO_DISPONIBLE` | 503: Smart PSE no respondió (reintentable) |
 | `ANULACION_MIXTA` | Facturas y boletas en la misma anulación (422) |
 | `LLAVE_DE_PRUEBA_EN_PRODUCCION` | Llave de prueba usada con un RUC en producción (403) |
 | `ERROR_INTERNO` | Error del servidor |

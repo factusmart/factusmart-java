@@ -1,5 +1,24 @@
 # Cambios
 
+## 0.5.0 — 2026-11-10
+
+Configuración del RUC por API con certificado propio o Smart PSE (contrato nuevo del backend).
+
+- `fs.rucs.configurarSunat` gana `confirmar` (se manda `"confirmar": true` solo si es `true`):
+  `configurarSunat(ruc, entorno, confirmar)`, `configurarSunat(ruc, usuarioSol, claveSol, entorno, confirmar)`
+  y `configurarSunat(ruc, datos, confirmar)`; en el mapa también vale `"confirmar", true`. Las firmas de
+  0.4.0 siguen igual. Obligatorio para pasar un RUC de producción a prueba.
+- Códigos nuevos en `FactuSmartException.CODIGOS_DE_ERROR`: `LIMITE_VERIFICACIONES` (429, reintentable
+  tras Retry-After), `CONFIRMAR_CAMBIO_ENTORNO` (422, no reintentable) y `PSE_NO_DISPONIBLE` (503,
+  reintentable). `RUC_DESACTIVADO` (403) también en certificado, sunat y verificar.
+- 429 `LIMITE_VERIFICACIONES` → `LimiteDePeticiones` con `getSegundosDeEspera()` (Retry-After). El SDK
+  no lo reintenta solo (la espera puede ser de hasta una hora).
+- Javadoc y README: modalidad `propio` (certificado + SOL) vs `pse` (Smart PSE, sin certificado, con SOL
+  en producción), designar a Smart PSE en SUNAT, `faltantes` `certificado_otro_ruc` y `sol` con pse,
+  `aviso` en `configuracion`.
+- Instrucciones de instalación apuntan a `factusmart-0.5.0.jar` (release v0.5.0).
+- `tests/fixtures/openapi.yaml` actualizado a la spec actual.
+
 ## 0.4.0 — 2026-11-10
 
 Smart PSE en `PUT /rucs/{ruc}/sunat` (`updateRucSunat`): campos `modalidad` (`propio` | `pse`),
