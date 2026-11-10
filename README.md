@@ -132,6 +132,10 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.rucs.listar()` | `GET /rucs` | `Map` |
 | `fs.rucs.crear(Json.objeto("ruc", ..., "empresa", ..., "correo", ..., "clave", ...))` | `POST /rucs` | `Map` (`ya_existia`) |
 | `fs.rucs.activar(ruc, activo)` | `PATCH /rucs/{ruc}/activation` | `Map` |
+| `fs.rucs.subirCertificado(ruc, archivo, clave)` | `PUT /rucs/{ruc}/certificado` | `Map` (`certificado`: `instalado`, `titular`, `vence`, `dias_para_vencer`, `ruc_coincide`; `aviso`) |
+| `fs.rucs.configurarSunat(ruc, usuarioSol, claveSol, entorno)` | `PUT /rucs/{ruc}/sunat` | `Map` (igual que `configuracion`) |
+| `fs.rucs.verificar(ruc)` | `POST /rucs/{ruc}/verificar` | `Map` (`listo_para_emitir`, `entorno`, `checks`) |
+| `fs.rucs.configuracion(ruc)` | `GET /rucs/{ruc}/configuracion` | `Map` (`entorno`, `certificado`, `sol`, `envio`, `listo_para_produccion`, `faltantes`) |
 
 Ayudantes estáticos: `FactuSmart.calcularComprobante(items)` y
 `FactuSmart.verificarFirmaWebhook(cuerpoCrudo, firma, secreto)`.
@@ -239,6 +243,42 @@ c.get("consultas_restantes");  // cupo del periodo ("periodo": "mes" | "dia"), s
 Repetir un número en 30 días responde `desde_cache: true` y no descuenta. Al agotar el cupo lanza
 `LimiteDePeticiones` con `getCodigo()` = `LIMITE_CONSULTAS` (no se reintenta); un número inexistente,
 `NoEncontrado`; uno mal formado, `ErrorDeValidacion`. `503 CONSULTA_NO_DISPONIBLE` se reintenta solo.
+
+### Configurar un RUC por API (certificado, SOL y entorno)
+
+Para dejar listo un RUC de tu cuenta sin entrar al panel. El RUC va en la ruta: estas llamadas no
+mandan `X-RUC` ni `?ruc=`. No gastan créditos. La llave de **prueba** (`fs_test_…`) puede usar
+`verificar` y `configuracion`, pero no instalar el certificado ni cambiar SOL o entorno
+(`RucNoAutorizado` 403, código `SIN_PERMISO`).
+
+```java
+String ruc = "20777666555";
+
+// 1. Certificado digital (.pfx / .p12): el SDK lee el archivo y lo manda en base64.
+Map<String, Object> c = fs.rucs.subirCertificado(ruc, Paths.get("certificado.pfx"), "ClaveDelPfx");
+// también: subirCertificado(ruc, "C:/certs/certificado.pfx", clave) o subirCertificado(ruc, bytes, clave)
+((Map<?, ?>) c.get("certificado")).get("vence");        // "2027-11-10"; si "ruc_coincide" es null, revisa c.get("aviso")
+
+// 2. Usuario secundario SOL y su clave; el entorno es opcional (null = no se cambia).
+fs.rucs.configurarSunat(ruc, "FACTURA1", "ClaveSol9", null);
+fs.rucs.configurarSunat(ruc, "produccion");              // solo el entorno: "prueba" | "produccion"
+
+// 3. Prueba real contra SUNAT, sin emitir nada.
+Map<String, Object> v = fs.rucs.verificar(ruc);
+v.get("listo_para_emitir");                              // true / false; detalle en v.get("checks")
+
+// Ver cómo quedó (nunca devuelve claves; el usuario SOL viene enmascarado).
+Map<String, Object> cfg = fs.rucs.configuracion(ruc);
+cfg.get("faltantes");                                    // ej. [certificado, sol]
+```
+
+- Clave incorrecta, certificado vencido o de otro RUC → `ErrorDeValidacion` (422); el motivo está en
+  `getMensaje()` y en `getCampos()`. Pasar a `produccion` sin certificado o sin SOL también da 422
+  (lista en `getRespuesta()`, clave `faltantes`) y no se guarda nada.
+- **La clave del certificado, la clave SOL y el contenido del certificado nunca aparecen en el
+  mensaje de una excepción ni en `getRespuesta()`**: si el servidor (o un proxy) los repitiera, el SDK
+  los cambia por `***`. El SDK no escribe logs.
+- Un archivo que no existe lanza `FactuSmartException` antes de llamar al API.
 
 ## ¿Calcular en el servidor o local?
 
@@ -382,15 +422,15 @@ constante y nunca lanza: si la firma o el secreto faltan o están mal formados, 
 - Se reintenta solo ante: error de red/timeout, 429, 502, 503, 504 y, en `emitir`, 409 ("emisión en
   curso con esa clave"). Espera creciente: 1 s, 2 s, 4 s… Ante límite de peticiones se respeta
   `Retry-After` o el "Espera N segundos" del mensaje.
-- Se reintentan: todos los GET, `comprobantes.emitir`, `comprobantes.calcular` (no tiene efectos) y
-  `rucs.crear` (idempotente por RUC). En estas operaciones también se reintenta cuando el API responde
+- Se reintentan: todos los GET, `comprobantes.emitir`, `comprobantes.calcular` (no tiene efectos),
+  `rucs.crear` (idempotente por RUC) y `rucs.verificar` (solo lee). En estas operaciones también se reintenta cuando el API responde
   `reintentable: true` (ej. `ERROR_INTERNO`, `SUNAT_NO_DISPONIBLE`), con el mismo tope y la misma espera.
 - **`reintentable: false` manda:** si el cuerpo del error trae `reintentable: false`, no se reintenta
   nunca, aunque el HTTP sea 429, 409, 502, 503 o 504 (caso real: 429 `LIMITE_PRUEBAS_DIARIO`). Si el
   cuerpo no trae `reintentable` (servidor de versión anterior), se usa la regla por HTTP de arriba.
 - **Nunca** se reintentan automáticamente: `anulaciones.crear`, `guias.emitir` (no acepta
   `Idempotency-Key`), `comprobantes.reenviar`, `comprobantes.consultarSunat`, `rucs.activar`,
-  aunque el API responda `reintentable: true`.
+  `rucs.subirCertificado`, `rucs.configurarSunat`, aunque el API responda `reintentable: true`.
 
 ## Pruebas locales con certificado propio (`verificarSsl(false)`)
 

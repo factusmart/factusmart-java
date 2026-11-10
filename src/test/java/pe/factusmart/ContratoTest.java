@@ -50,6 +50,10 @@ class ContratoTest {
         METODOS.put("listRucs", "rucs.listar");
         METODOS.put("createRuc", "rucs.crear");
         METODOS.put("setRucActivation", "rucs.activar");
+        METODOS.put("uploadRucCertificate", "rucs.subirCertificado");
+        METODOS.put("updateRucSunat", "rucs.configurarSunat");
+        METODOS.put("verifyRucConfig", "rucs.verificar");
+        METODOS.put("getRucConfig", "rucs.configuracion");
         METODOS.put("calculateDocument", "comprobantes.calcular");
         METODOS.put("listCatalogs", "catalogos.listar");
         METODOS.put("getCatalog", "catalogos.consultar");

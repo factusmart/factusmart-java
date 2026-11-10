@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Pruebas sin red: transporte falso inyectado y espera entre reintentos sin dormir de verdad. */
 class SinRedTest {
@@ -665,5 +667,177 @@ class SinRedTest {
         assertEquals("ok", r.get("estado"));
         assertEquals("GET", t.peticiones.get(0).getMetodo());
         assertEquals(BASE + "/", t.peticiones.get(0).getUrl());
+    }
+
+    // ───────────── Configuración del RUC ─────────────
+
+    static final String CONFIG_OK = "{\"success\":true,\"ruc\":\"20777666555\",\"nombre\":\"API TENANT CLEAN SAC\","
+            + "\"entorno\":\"produccion\",\"certificado\":{\"instalado\":true,\"vence\":\"2027-11-10\",\"dias_para_vencer\":364},"
+            + "\"sol\":{\"configurado\":true,\"usuario\":\"FA*****1\"},\"envio\":\"sunat\",\"listo_para_produccion\":true,\"faltantes\":[]}";
+
+    static void sinRucEmisor(SolicitudHttp p) {
+        assertNull(p.getCabecera("X-RUC"), "no lleva X-RUC");
+        assertFalse(p.getUrl().contains("?"), "no lleva query: " + p.getUrl());
+        assertEquals("clave", p.getCabecera("X-API-Key"));
+        assertEquals("factusmart-java/" + FactuSmart.VERSION, p.getCabecera("User-Agent"));
+    }
+
+    @Test
+    void subirCertificadoDesdeArchivoYDesdeBytesEnBase64(@TempDir Path dir) throws IOException {
+        byte[] pfx = new byte[300];
+        for (int i = 0; i < pfx.length; i++) pfx[i] = (byte) (i * 7); // binario con bytes > 127 y ceros
+        Path archivo = dir.resolve("mi certificado.pfx");
+        Files.write(archivo, pfx);
+        String resp = "{\"success\":true,\"ruc\":\"20777666555\",\"certificado\":{\"instalado\":true,"
+                + "\"titular\":\"API TENANT CLEAN SAC\",\"vence\":\"2027-11-10\",\"dias_para_vencer\":364,\"ruc_coincide\":true}}";
+        Falso t = new Falso().responde(200, resp).responde(200, resp).responde(200, resp);
+        FactuSmart fs = cliente(t); // el cliente tiene RUC por defecto: no debe viajar
+
+        Map<String, Object> r = fs.rucs.subirCertificado("20777666555", archivo, "Clave#Pfx1");
+        Map<?, ?> cert = (Map<?, ?>) r.get("certificado");
+        assertEquals(Boolean.TRUE, cert.get("instalado"));
+        assertEquals(364, ((Number) cert.get("dias_para_vencer")).intValue());
+        assertEquals(Boolean.TRUE, cert.get("ruc_coincide"));
+        fs.rucs.subirCertificado("20777666555", archivo.toString(), "Clave#Pfx1");
+        fs.rucs.subirCertificado(" 20777666555 ", pfx, "Clave#Pfx1");
+
+        assertEquals(3, t.peticiones.size());
+        String esperado = "{\"certificado\":\"" + Base64.getEncoder().encodeToString(pfx) + "\",\"clave\":\"Clave#Pfx1\"}";
+        for (SolicitudHttp p : t.peticiones) {
+            assertEquals("PUT", p.getMetodo());
+            assertEquals(BASE + "/rucs/20777666555/certificado", p.getUrl());
+            assertEquals("application/json", p.getCabecera("Content-Type"));
+            assertEquals(esperado, p.getCuerpoTexto());
+            sinRucEmisor(p);
+        }
+        Map<?, ?> enviado = (Map<?, ?>) Json.leer(t.peticiones.get(0).getCuerpoTexto());
+        assertArrayEquals(pfx, Base64.getDecoder().decode((String) enviado.get("certificado")));
+    }
+
+    @Test
+    void subirCertificadoValidaSinPeticionYSinMostrarLaClave(@TempDir Path dir) {
+        Falso t = new Falso();
+        FactuSmart fs = cliente(t);
+        Path noExiste = dir.resolve("no-existe.pfx");
+        FactuSmartException e = assertThrows(FactuSmartException.class,
+                () -> fs.rucs.subirCertificado("20777666555", noExiste, "SecretoNoMostrar"));
+        assertTrue(e.getMessage().contains("no existe el archivo"), e.getMessage());
+        assertTrue(e.getMessage().contains("no-existe.pfx"), e.getMessage());
+        assertFalse(e.getMessage().contains("SecretoNoMostrar"));
+        assertFalse(e.toString().contains("SecretoNoMostrar"));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.subirCertificado("20777666555", dir, "x")); // carpeta
+        assertThrows(FactuSmartException.class, () -> fs.rucs.subirCertificado(" ", new byte[] {1}, "x"));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.subirCertificado("20777666555", new byte[0], "x"));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.subirCertificado("20777666555", new byte[] {1}, ""));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.subirCertificado("20777666555", (String) null, "x"));
+        assertTrue(t.peticiones.isEmpty());
+    }
+
+    @Test
+    void errorDelApiNuncaMuestraLaClaveNiElCertificado() {
+        byte[] pfx = "contenido-del-pfx-de-prueba".getBytes(StandardCharsets.UTF_8);
+        String b64 = Base64.getEncoder().encodeToString(pfx);
+        // Un API (o proxy) que repite lo recibido en el error: el SDK lo oculta igual.
+        Falso t = new Falso()
+                .responde(422, "{\"success\":false,\"message\":\"El certificado no abre con la clave Clave#Pfx1.\","
+                        + "\"codigo\":\"DATOS_INVALIDOS\",\"reintentable\":false,"
+                        + "\"campos\":{\"clave\":[\"Clave#Pfx1 no sirve\"],\"certificado\":[\"" + b64 + "\"]}}")
+                .responde(422, "{\"success\":false,\"message\":\"clave_sol MiClaveSol9 inválida\",\"codigo\":\"DATOS_INVALIDOS\","
+                        + "\"reintentable\":false,\"campos\":{\"clave_sol\":[\"MiClaveSol9\"]}}")
+                .responde(500, "<html>error con MiClaveSol9</html>");
+        FactuSmart fs = cliente(t);
+
+        ErrorDeValidacion e = assertThrows(ErrorDeValidacion.class, () -> fs.rucs.subirCertificado("20777666555", pfx, "Clave#Pfx1"));
+        assertEquals(1, t.peticiones.size()); // un 422 nunca se reintenta
+        assertEquals("DATOS_INVALIDOS", e.getCodigo());
+        for (String texto : Arrays.asList(e.getMessage(), e.toString(), e.getMensaje(), String.valueOf(e.getCampos()),
+                String.valueOf(e.getErrores()), String.valueOf(e.getRespuesta()))) {
+            assertFalse(texto.contains("Clave#Pfx1"), texto);
+            assertFalse(texto.contains(b64), texto);
+        }
+        assertEquals("El certificado no abre con la clave ***.", e.getMensaje());
+        assertEquals(Collections.singletonList("*** no sirve"), e.getCampos().get("clave"));
+
+        ErrorDeValidacion s = assertThrows(ErrorDeValidacion.class,
+                () -> fs.rucs.configurarSunat("20777666555", "FACTURA1", "MiClaveSol9", null));
+        assertFalse(s.toString().contains("MiClaveSol9"));
+        assertFalse(String.valueOf(s.getRespuesta()).contains("MiClaveSol9"));
+        assertEquals("clave_sol *** inválida", s.getMensaje());
+
+        FactuSmartException h = assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSunat("20777666555", "FACTURA1", "MiClaveSol9", "produccion"));
+        assertFalse(h.toString().contains("MiClaveSol9"));
+        assertFalse(String.valueOf(h.getRespuesta()).contains("MiClaveSol9"));
+        assertEquals(3, t.peticiones.size()); // los PUT no se reintentan ni ante 500
+    }
+
+    @Test
+    void configurarSunatMandaSoloLoQueSePasa() {
+        Falso t = new Falso().responde(200, CONFIG_OK).responde(200, CONFIG_OK).responde(200, CONFIG_OK);
+        FactuSmart fs = cliente(t);
+
+        Map<String, Object> r = fs.rucs.configurarSunat("20777666555", "FACTURA1", "ClaveSol9", null);
+        assertEquals("FA*****1", ((Map<?, ?>) r.get("sol")).get("usuario"));
+        assertEquals(Boolean.TRUE, r.get("listo_para_produccion"));
+        assertEquals(Collections.emptyList(), r.get("faltantes"));
+        fs.rucs.configurarSunat("20777666555", "produccion");
+        fs.rucs.configurarSunat("20777666555", "20777666555FACTURA1", "ClaveSol9", "prueba");
+
+        assertEquals("{\"usuario_sol\":\"FACTURA1\",\"clave_sol\":\"ClaveSol9\"}", t.peticiones.get(0).getCuerpoTexto());
+        assertEquals("{\"entorno\":\"produccion\"}", t.peticiones.get(1).getCuerpoTexto());
+        assertEquals("{\"usuario_sol\":\"20777666555FACTURA1\",\"clave_sol\":\"ClaveSol9\",\"entorno\":\"prueba\"}",
+                t.peticiones.get(2).getCuerpoTexto());
+        for (SolicitudHttp p : t.peticiones) {
+            assertEquals("PUT", p.getMetodo());
+            assertEquals(BASE + "/rucs/20777666555/sunat", p.getUrl());
+            sinRucEmisor(p);
+        }
+
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", "FACTURA1", null, null));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", null, "ClaveSol9", "prueba"));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", null, null, null));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", " "));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat(null, "prueba"));
+        assertEquals(3, t.peticiones.size());
+    }
+
+    @Test
+    void verificarYConfiguracionSinCuerpoSinRucEmisorYConReintento() {
+        Falso t = new Falso()
+                .responde(503, "{\"success\":false,\"message\":\"Mantenimiento\",\"reintentable\":true}")
+                .responde(200, "{\"success\":true,\"ruc\":\"20777666555\",\"listo_para_emitir\":false,\"entorno\":\"produccion\","
+                        + "\"checks\":{\"certificado\":{\"ok\":true,\"mensaje\":\"Vigente\"},"
+                        + "\"sol\":{\"ok\":false,\"mensaje\":\"SUNAT rechazó el usuario o la clave SOL.\"}}}")
+                .responde(200, CONFIG_OK);
+        FactuSmart fs = cliente(t);
+
+        Map<String, Object> v = fs.rucs.verificar("20777666555");
+        assertEquals(Boolean.FALSE, v.get("listo_para_emitir"));
+        Map<?, ?> checks = (Map<?, ?>) v.get("checks");
+        assertEquals(Boolean.FALSE, ((Map<?, ?>) checks.get("sol")).get("ok"));
+        assertEquals(2, t.peticiones.size());
+        assertEquals(1, esperas.size());
+        for (int i = 0; i < 2; i++) {
+            SolicitudHttp p = t.peticiones.get(i);
+            assertEquals("POST", p.getMetodo());
+            assertEquals(BASE + "/rucs/20777666555/verificar", p.getUrl());
+            assertNull(p.getCuerpo());
+            assertNull(p.getCabecera("Content-Type"));
+            sinRucEmisor(p);
+        }
+
+        Map<String, Object> c = fs.rucs.configuracion("20777666555");
+        assertEquals("produccion", c.get("entorno"));
+        assertEquals("sunat", c.get("envio"));
+        assertEquals("2027-11-10", ((Map<?, ?>) c.get("certificado")).get("vence"));
+        SolicitudHttp g = t.peticiones.get(2);
+        assertEquals("GET", g.getMetodo());
+        assertEquals(BASE + "/rucs/20777666555/configuracion", g.getUrl());
+        assertNull(g.getCuerpo());
+        sinRucEmisor(g);
+
+        assertThrows(FactuSmartException.class, () -> fs.rucs.verificar(""));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configuracion(null));
+        assertEquals(3, t.peticiones.size());
     }
 }

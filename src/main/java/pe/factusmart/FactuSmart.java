@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class FactuSmart {
 
     /** Versión del SDK. */
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
 
     private static final long ESPERA_MAXIMA_MS = 60_000L;
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
@@ -399,7 +400,8 @@ public final class FactuSmart {
                 try {
                     v = Json.leer(texto);
                 } catch (IllegalArgumentException e) {
-                    throw new FactuSmartException("El API respondió algo que no es JSON (HTTP " + status + ").", status, texto);
+                    throw new FactuSmartException("El API respondió algo que no es JSON (HTTP " + status + ").", status,
+                            ocultarSecretos(texto, p.secretos));
                 }
                 if (!(v instanceof Map)) {
                     throw new FactuSmartException("El API respondió un JSON que no es un objeto (HTTP " + status + ").", status, v);
@@ -414,6 +416,8 @@ public final class FactuSmart {
             } catch (IllegalArgumentException e) {
                 // no es JSON (p. ej. una página HTML de un proxy o de un servidor de versión anterior)
             }
+            // Si el API repitiera una clave o el certificado en su respuesta, no llega al mensaje ni a la excepción.
+            cuerpoError = ocultarSecretos(cuerpoError, p.secretos);
             FactuSmartException error = construirError(status, cuerpoError, r.getCabecera("Retry-After"));
 
             // `reintentable: false` en el cuerpo manda sobre la regla por HTTP (ej. 429 LIMITE_PRUEBAS_DIARIO).
@@ -430,6 +434,32 @@ public final class FactuSmart {
             }
             throw error;
         }
+    }
+
+    /**
+     * Copia de {@code v} (texto, mapa o lista del JSON) con cada secreto reemplazado por {@code ***}. Se
+     * usa en las respuestas de error de las peticiones que llevan claves (certificado, clave SOL).
+     */
+    static Object ocultarSecretos(Object v, List<String> secretos) {
+        if (secretos.isEmpty() || v == null) return v;
+        if (v instanceof String) {
+            String t = (String) v;
+            for (String s : secretos) t = t.replace(s, "***");
+            return t;
+        }
+        if (v instanceof Map) {
+            Map<Object, Object> m = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) v).entrySet()) {
+                m.put(ocultarSecretos(e.getKey(), secretos), ocultarSecretos(e.getValue(), secretos));
+            }
+            return m;
+        }
+        if (v instanceof List) {
+            List<Object> l = new ArrayList<>();
+            for (Object x : (List<?>) v) l.add(ocultarSecretos(x, secretos));
+            return l;
+        }
+        return v;
     }
 
     private void esperar(Long segundos, int intento) {
@@ -545,6 +575,8 @@ public final class FactuSmart {
         final String ruta;
         final Map<String, Object> query = new LinkedHashMap<>();
         final Map<String, String> cabeceras = new LinkedHashMap<>();
+        /** Valores que nunca deben aparecer en una excepción (claves, certificado en base64). */
+        final List<String> secretos = new ArrayList<>();
         Map<String, Object> cuerpo;
         /** Si se puede reintentar ante red/timeout/429/502/503/504. */
         boolean reintentable;
@@ -571,6 +603,18 @@ public final class FactuSmart {
             Peticion p = new Peticion("PATCH", ruta);
             p.cuerpo = cuerpo;
             return p;
+        }
+
+        static Peticion put(String ruta, Map<String, Object> cuerpo) {
+            Peticion p = new Peticion("PUT", ruta);
+            p.cuerpo = cuerpo;
+            return p;
+        }
+
+        /** Marca un valor del cuerpo como secreto: se oculta ({@code ***}) en cualquier error. */
+        Peticion secreto(String valor) {
+            if (valor != null && !valor.isEmpty()) secretos.add(valor);
+            return this;
         }
 
         Peticion query(String clave, Object valor) {

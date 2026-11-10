@@ -22,7 +22,7 @@ public final class SolicitudHttp {
         this.timeout = timeout;
     }
 
-    /** {@code GET}, {@code POST} o {@code PATCH}. */
+    /** {@code GET}, {@code POST}, {@code PUT} o {@code PATCH}. */
     public String getMetodo() {
         return metodo;
     }

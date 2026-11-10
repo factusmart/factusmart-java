@@ -1,5 +1,25 @@
 # Cambios
 
+## 0.3.0 — 2026-11-10
+
+Configuración del RUC por API (tag «Configuración del RUC» del openapi.yaml). El RUC va en la ruta:
+ninguna de estas llamadas manda `X-RUC` ni `?ruc=`.
+
+- `fs.rucs.subirCertificado(ruc, archivo, clave)` (`PUT /rucs/{ruc}/certificado`, operationId
+  `uploadRucCertificate`): instala el .pfx / .p12. Acepta `Path`, la ruta como `String` o los
+  `byte[]`; el SDK lo codifica en base64. Un archivo que no existe lanza `FactuSmartException` sin
+  llamar al API. No se reintenta.
+- `fs.rucs.configurarSunat(ruc, usuarioSol, claveSol, entorno)` y `configurarSunat(ruc, entorno)`
+  (`PUT /rucs/{ruc}/sunat`, `updateRucSunat`): usuario secundario SOL + clave y/o entorno
+  (`prueba` | `produccion`). Solo manda lo que no es `null`; `usuarioSol` y `claveSol` van juntos. No se
+  reintenta.
+- `fs.rucs.verificar(ruc)` (`POST /rucs/{ruc}/verificar`, `verifyRucConfig`): prueba el certificado y
+  el SOL contra SUNAT sin emitir. Se reintenta como un GET.
+- `fs.rucs.configuracion(ruc)` (`GET /rucs/{ruc}/configuracion`, `getRucConfig`).
+- Seguridad: en las peticiones con claves, si la respuesta de error repite la clave, la clave SOL o el
+  certificado, se reemplazan por `***` en el mensaje, en `getCampos()` y en `getRespuesta()`.
+- `tests/fixtures/openapi.yaml` actualizado a la spec actual (30 operationId).
+
 ## 0.2.0 — 2026-11-06
 
 - `fs.consultas.ruc(numero)`, `fs.consultas.dni(numero)` y `fs.consultas.documento(tipo, numero)`
