@@ -134,8 +134,9 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.rucs.activar(ruc, activo)` | `PATCH /rucs/{ruc}/activation` | `Map` |
 | `fs.rucs.subirCertificado(ruc, archivo, clave)` | `PUT /rucs/{ruc}/certificado` | `Map` (`certificado`: `instalado`, `titular`, `vence`, `dias_para_vencer`, `ruc_coincide`; `aviso`) |
 | `fs.rucs.configurarSunat(ruc, usuarioSol, claveSol, entorno)` | `PUT /rucs/{ruc}/sunat` | `Map` (igual que `configuracion`) |
-| `fs.rucs.verificar(ruc)` | `POST /rucs/{ruc}/verificar` | `Map` (`listo_para_emitir`, `entorno`, `checks`) |
-| `fs.rucs.configuracion(ruc)` | `GET /rucs/{ruc}/configuracion` | `Map` (`entorno`, `certificado`, `sol`, `envio`, `listo_para_produccion`, `faltantes`) |
+| `fs.rucs.configurarSunat(ruc, Json.objeto("modalidad", "pse", ...))` · `fs.rucs.configurarSmartPse(ruc, pseUsuario, pseClave, entorno)` | `PUT /rucs/{ruc}/sunat` | `Map` (igual que `configuracion` + `aviso`) |
+| `fs.rucs.verificar(ruc)` | `POST /rucs/{ruc}/verificar` | `Map` (`listo_para_emitir`, `entorno`, `modalidad`, `checks`; `checks.pse` con Smart PSE) |
+| `fs.rucs.configuracion(ruc)` | `GET /rucs/{ruc}/configuracion` | `Map` (`entorno`, `certificado`, `sol`, `envio`, `modalidad`, `pse`, `listo_para_produccion`, `faltantes`) |
 
 Ayudantes estáticos: `FactuSmart.calcularComprobante(items)` y
 `FactuSmart.verificarFirmaWebhook(cuerpoCrudo, firma, secreto)`.
@@ -279,6 +280,28 @@ cfg.get("faltantes");                                    // ej. [certificado, so
   mensaje de una excepción ni en `getRespuesta()`**: si el servidor (o un proxy) los repitiera, el SDK
   los cambia por `***`. El SDK no escribe logs.
 - Un archivo que no existe lanza `FactuSmartException` antes de llamar al API.
+
+#### Enviar por Smart PSE (sin certificado propio)
+
+Con `modalidad: pse`, Smart PSE firma y envía por ti. Primero da de alta la empresa en tu panel/API de
+Smart PSE y copia sus **credenciales CPE**; luego:
+
+```java
+Map<String, Object> r = fs.rucs.configurarSmartPse(ruc, "FURZQQ7F", "379VMR6U", "produccion");
+// igual que: fs.rucs.configurarSunat(ruc, Json.objeto("modalidad", "pse", "pse_usuario", "FURZQQ7F",
+//                                                     "pse_clave", "379VMR6U", "entorno", "produccion"));
+r.get("pse");    // {proveedor=smartpse, configurado=true, usuario=FU*****F}
+r.get("aviso");  // el contribuyente debe DESIGNAR A SMART PSE como su PSE en SUNAT con su Clave SOL
+
+Map<?, ?> checks = (Map<?, ?>) fs.rucs.verificar(ruc).get("checks");
+((Map<?, ?>) checks.get("pse")).get("ok");  // true = Smart PSE aceptó; false = rechazó; null = no respondió
+```
+
+- **Sin la designación en SUNAT (Clave SOL del contribuyente), SUNAT rechaza los comprobantes.**
+- `pse_usuario` y `pse_clave` van juntos; `pse_clave` se oculta con `***` en cualquier error, igual que
+  la clave SOL. Si Smart PSE rechaza las credenciales → `ErrorDeValidacion` (422) y no se guarda nada.
+- El usuario SOL es opcional pero recomendado (guías y consultas a SUNAT). Para volver a tu
+  certificado: `configurarSunat(ruc, Json.objeto("modalidad", "propio"))`.
 
 ## ¿Calcular en el servidor o local?
 

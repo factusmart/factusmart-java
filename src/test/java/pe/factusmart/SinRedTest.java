@@ -840,4 +840,132 @@ class SinRedTest {
         assertThrows(FactuSmartException.class, () -> fs.rucs.configuracion(null));
         assertEquals(3, t.peticiones.size());
     }
+
+    // ───────────── Smart PSE en PUT /rucs/{ruc}/sunat (0.4.0) ─────────────
+
+    static final String CONFIG_PSE = "{\"success\":true,\"ruc\":\"20777666555\",\"nombre\":\"API TENANT CLEAN SAC\","
+            + "\"entorno\":\"produccion\",\"certificado\":{\"instalado\":false,\"vence\":null,\"dias_para_vencer\":null},"
+            + "\"sol\":{\"configurado\":false,\"usuario\":null},\"envio\":\"pse\",\"modalidad\":\"pse\","
+            + "\"pse\":{\"proveedor\":\"smartpse\",\"configurado\":true,\"usuario\":\"FU*****F\"},"
+            + "\"listo_para_produccion\":true,\"faltantes\":[],"
+            + "\"aviso\":\"Con Smart PSE el contribuyente debe designar a Smart PSE como su PSE en SUNAT.\"}";
+
+    static final String CONFIG_PROPIO = "{\"success\":true,\"ruc\":\"20777666555\",\"nombre\":\"X\",\"entorno\":\"prueba\","
+            + "\"certificado\":{\"instalado\":true,\"vence\":\"2027-11-10\",\"dias_para_vencer\":364},"
+            + "\"sol\":{\"configurado\":true,\"usuario\":\"FA*****1\"},\"envio\":\"sunat\",\"modalidad\":\"propio\","
+            + "\"pse\":null,\"listo_para_produccion\":true,\"faltantes\":[]}";
+
+    @Test
+    void configurarSmartPseMandaElCuerpoExactoYLeePseYAviso() {
+        Falso t = new Falso().responde(200, CONFIG_PSE).responde(200, CONFIG_PSE).responde(200, CONFIG_PROPIO);
+        FactuSmart fs = cliente(t);
+
+        Map<String, Object> r = fs.rucs.configurarSmartPse("20777666555", "FURZQQ7F", "379VMR6U", "produccion");
+        String esperado = "{\"modalidad\":\"pse\",\"pse_usuario\":\"FURZQQ7F\",\"pse_clave\":\"379VMR6U\",\"entorno\":\"produccion\"}";
+        assertEquals(esperado, t.peticiones.get(0).getCuerpoTexto());
+        assertEquals("pse", r.get("modalidad"));
+        Map<?, ?> pse = (Map<?, ?>) r.get("pse");
+        assertEquals("smartpse", pse.get("proveedor"));
+        assertEquals(Boolean.TRUE, pse.get("configurado"));
+        assertEquals("FU*****F", pse.get("usuario"));
+        assertTrue(String.valueOf(r.get("aviso")).contains("designar a Smart PSE"));
+
+        // Con el mapa: mismo cuerpo, en el orden en que se pasan las claves.
+        fs.rucs.configurarSunat("20777666555", Json.objeto("modalidad", "pse", "pse_usuario", "FURZQQ7F",
+                "pse_clave", "379VMR6U", "entorno", "produccion"));
+        assertEquals(esperado, t.peticiones.get(1).getCuerpoTexto());
+
+        // Volver a certificado propio: pse viene null.
+        Map<String, Object> propio = fs.rucs.configurarSunat("20777666555", Json.objeto("modalidad", "propio"));
+        assertEquals("{\"modalidad\":\"propio\"}", t.peticiones.get(2).getCuerpoTexto());
+        assertEquals("propio", propio.get("modalidad"));
+        assertTrue(propio.containsKey("pse"));
+        assertNull(propio.get("pse"));
+        for (SolicitudHttp p : t.peticiones) {
+            assertEquals("PUT", p.getMetodo());
+            assertEquals(BASE + "/rucs/20777666555/sunat", p.getUrl());
+            sinRucEmisor(p);
+        }
+    }
+
+    @Test
+    void configurarSunatValidaLocalmenteLosCamposNuevos() {
+        Falso t = new Falso().responde(200, CONFIG_PROPIO).responde(200, CONFIG_PROPIO).responde(200, CONFIG_PSE)
+                .responde(200, CONFIG_PSE);
+        FactuSmart fs = cliente(t);
+
+        // Todo esto falla sin hacer ninguna petición.
+        assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSunat("20777666555", Json.objeto("modalidad", "pse", "pse_usuario", "FURZQQ7F")));
+        assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSunat("20777666555", Json.objeto("pse_clave", "379VMR6U")));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSmartPse("20777666555", "FURZQQ7F", null, null));
+        assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSunat("20777666555", Json.objeto("usuario_sol", "FACTURA1")));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", Json.objeto("modalidad", "ose")));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", Json.objeto("entorno", "beta")));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", "real"));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", Json.objeto()));
+        assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSunat("20777666555", Json.objeto("entorno", null, "pse_usuario", " ")));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat("20777666555", (Map<String, Object>) null));
+        assertThrows(FactuSmartException.class, () -> fs.rucs.configurarSunat(null, Json.objeto("modalidad", "pse")));
+        assertEquals(0, t.peticiones.size());
+
+        // Se aceptan: demo (sinónimo de prueba), modalidad pse sin credenciales y pse_* sin modalidad.
+        fs.rucs.configurarSunat("20777666555", Json.objeto("entorno", "demo"));
+        fs.rucs.configurarSunat("20777666555", "demo");
+        fs.rucs.configurarSunat("20777666555", Json.objeto("modalidad", "pse"));
+        fs.rucs.configurarSunat("20777666555", Json.objeto("pse_usuario", "FURZQQ7F", "pse_clave", "379VMR6U"));
+        assertEquals("{\"entorno\":\"demo\"}", t.peticiones.get(0).getCuerpoTexto());
+        assertEquals("{\"entorno\":\"demo\"}", t.peticiones.get(1).getCuerpoTexto());
+        assertEquals("{\"modalidad\":\"pse\"}", t.peticiones.get(2).getCuerpoTexto());
+        assertEquals("{\"pse_usuario\":\"FURZQQ7F\",\"pse_clave\":\"379VMR6U\"}", t.peticiones.get(3).getCuerpoTexto());
+    }
+
+    @Test
+    void errorDelApiNuncaMuestraLaClavePseYElPutNoSeReintenta() {
+        Falso t = new Falso()
+                .responde(422, "{\"success\":false,\"message\":\"Smart PSE rechazó la clave 379VMR6U (y MiClaveSol9).\","
+                        + "\"codigo\":\"DATOS_INVALIDOS\",\"reintentable\":false,"
+                        + "\"campos\":{\"pse_clave\":[\"379VMR6U no sirve\"]}}")
+                .responde(503, "{\"success\":false,\"message\":\"Mantenimiento con 379VMR6U\",\"reintentable\":true}")
+                .responde(200, CONFIG_PSE);
+        FactuSmart fs = cliente(t);
+
+        ErrorDeValidacion e = assertThrows(ErrorDeValidacion.class, () -> fs.rucs.configurarSunat("20777666555",
+                Json.objeto("usuario_sol", "FACTURA1", "clave_sol", "MiClaveSol9", "modalidad", "pse",
+                        "pse_usuario", "FURZQQ7F", "pse_clave", "379VMR6U")));
+        assertEquals(1, t.peticiones.size());
+        for (String texto : Arrays.asList(e.getMessage(), e.toString(), e.getMensaje(), String.valueOf(e.getCampos()),
+                String.valueOf(e.getRespuesta()))) {
+            assertFalse(texto.contains("379VMR6U"), texto);
+            assertFalse(texto.contains("MiClaveSol9"), texto);
+        }
+        assertEquals("Smart PSE rechazó la clave *** (y ***).", e.getMensaje());
+        assertEquals(Collections.singletonList("*** no sirve"), e.getCampos().get("pse_clave"));
+
+        FactuSmartException h = assertThrows(FactuSmartException.class,
+                () -> fs.rucs.configurarSmartPse("20777666555", "FURZQQ7F", "379VMR6U", null));
+        assertEquals(503, h.getStatus());
+        assertFalse(h.toString().contains("379VMR6U"));
+        assertFalse(String.valueOf(h.getRespuesta()).contains("379VMR6U"));
+        assertEquals(2, t.peticiones.size()); // el 503 no se reintenta en un PUT
+        assertEquals(0, esperas.size());
+    }
+
+    @Test
+    void verificarLeeModalidadYChecksPse() {
+        Falso t = new Falso().responde(200, "{\"success\":true,\"ruc\":\"20777666555\",\"listo_para_emitir\":true,"
+                + "\"entorno\":\"produccion\",\"modalidad\":\"pse\",\"checks\":{"
+                + "\"certificado\":{\"ok\":null,\"mensaje\":\"Este RUC envía por PSE.\"},"
+                + "\"sol\":{\"ok\":null,\"mensaje\":\"Este RUC envía por PSE.\"},"
+                + "\"pse\":{\"ok\":true,\"mensaje\":\"Smart PSE aceptó el usuario y la clave.\"}}}");
+        FactuSmart fs = cliente(t);
+        Map<String, Object> v = fs.rucs.verificar("20777666555");
+        assertEquals("pse", v.get("modalidad"));
+        Map<?, ?> checks = (Map<?, ?>) v.get("checks");
+        assertEquals(Boolean.TRUE, ((Map<?, ?>) checks.get("pse")).get("ok"));
+        assertNull(((Map<?, ?>) checks.get("certificado")).get("ok"));
+    }
 }

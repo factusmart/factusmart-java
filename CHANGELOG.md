@@ -1,5 +1,23 @@
 # Cambios
 
+## 0.4.0 — 2026-11-10
+
+Smart PSE en `PUT /rucs/{ruc}/sunat` (`updateRucSunat`): campos `modalidad` (`propio` | `pse`),
+`pse_usuario` y `pse_clave`.
+
+- `fs.rucs.configurarSunat(ruc, Map datos)`: cualquier combinación de `usuario_sol` + `clave_sol`,
+  `entorno` (`prueba` | `produccion` | `demo`), `modalidad` y `pse_usuario` + `pse_clave`. Los `null`
+  no se mandan. Las firmas `configurarSunat(ruc, usuarioSol, claveSol, entorno)` y
+  `configurarSunat(ruc, entorno)` siguen igual.
+- `fs.rucs.configurarSmartPse(ruc, pseUsuario, pseClave, entorno)`: atajo con `modalidad: pse`.
+- Validación local (sin petición): algo que guardar; `usuario_sol`/`clave_sol` juntos;
+  `pse_usuario`/`pse_clave` juntos; `entorno` ∈ {prueba, produccion, demo}; `modalidad` ∈
+  {propio, pse}. `modalidad: pse` sin credenciales se deja pasar (el API lo permite sobre un RUC ya en PSE).
+- `pse_clave` se oculta con `***` en los errores, igual que `clave_sol`. El PUT sigue sin reintentarse.
+- Javadoc: respuesta con `modalidad`, `pse` (`proveedor`, `configurado`, `usuario`) y `aviso`;
+  `verificar` con `modalidad` y `checks.pse`.
+- `tests/fixtures/openapi.yaml` actualizado a la spec actual.
+
 ## 0.3.0 — 2026-11-10
 
 Configuración del RUC por API (tag «Configuración del RUC» del openapi.yaml). El RUC va en la ruta:

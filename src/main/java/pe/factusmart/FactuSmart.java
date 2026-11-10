@@ -40,7 +40,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class FactuSmart {
 
     /** Versión del SDK. */
-    public static final String VERSION = "0.3.0";
+    public static final String VERSION = "0.4.0";
 
     private static final long ESPERA_MAXIMA_MS = 60_000L;
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
