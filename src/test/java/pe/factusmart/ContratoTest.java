@@ -45,8 +45,10 @@ class ContratoTest {
         METODOS.put("getDocumentHistory", "comprobantes.historial");
         METODOS.put("voidDocument", "anulaciones.crear");
         METODOS.put("getVoidStatus", "anulaciones.estado");
+        METODOS.put("downloadVoidedFile", "anulaciones.descargar");
         METODOS.put("emitDispatchGuide", "guias.emitir");
         METODOS.put("getDispatchGuideStatus", "guias.estado");
+        METODOS.put("downloadDispatchGuideFile", "guias.descargar");
         METODOS.put("listRucs", "rucs.listar");
         METODOS.put("createRuc", "rucs.crear");
         METODOS.put("setRucActivation", "rucs.activar");

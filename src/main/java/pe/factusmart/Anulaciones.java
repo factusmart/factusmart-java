@@ -35,4 +35,22 @@ public final class Anulaciones {
         return fs.objeto(FactuSmart.Peticion.get("/anulaciones/" + t + "/status")
                 .query("ruc", fs.rucDe(opciones)).reintentable(true));
     }
+
+    /**
+     * {@code GET /anulaciones/{ticket}/{tipo}} — {@code tipo}: {@code "xml"} (el enviado) o {@code "cdr"}
+     * (ZIP de SUNAT; solo cuando ya respondió, si no se lanza {@link NoEncontrado}). Sin PDF. Devuelve los bytes.
+     */
+    public byte[] descargar(String ticket, String tipo) {
+        return descargar(ticket, tipo, null);
+    }
+
+    /** Igual, con {@code ruc} en {@link Opciones}. */
+    public byte[] descargar(String ticket, String tipo, Opciones opciones) {
+        if (!"xml".equals(tipo) && !"cdr".equals(tipo)) {
+            throw new FactuSmartException("Tipo de archivo inválido \"" + tipo + "\": usa \"xml\" o \"cdr\" (las anulaciones no tienen PDF).");
+        }
+        String t = FactuSmart.segmento(ticket, "Falta el ticket de la anulación.");
+        return fs.bytes(FactuSmart.Peticion.get("/anulaciones/" + t + "/" + tipo)
+                .query("ruc", fs.rucDe(opciones)).reintentable(true));
+    }
 }

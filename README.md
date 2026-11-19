@@ -10,22 +10,22 @@ IGV y los totales, consulta los catálogos SUNAT, y descarga el PDF, el XML firm
 
 ## Instalar
 
-Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.5.0.jar` desde la release
-[v0.5.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.5.0) y agrégalo al
+Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.6.0.jar` desde la release
+[v0.6.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.6.0) y agrégalo al
 classpath de tu proyecto.
 
 Gradle (guarda el `.jar` en la carpeta `libs/` de tu proyecto):
 
 ```groovy
 dependencies {
-    implementation files('libs/factusmart-0.5.0.jar')
+    implementation files('libs/factusmart-0.6.0.jar')
 }
 ```
 
 Maven: instálalo en tu repositorio local una sola vez…
 
 ```bash
-mvn install:install-file -Dfile=factusmart-0.5.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.5.0 -Dpackaging=jar
+mvn install:install-file -Dfile=factusmart-0.6.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.6.0 -Dpackaging=jar
 ```
 
 …y luego decláralo como cualquier dependencia:
@@ -34,11 +34,11 @@ mvn install:install-file -Dfile=factusmart-0.5.0.jar -DgroupId=pe.factusmart -Da
 <dependency>
   <groupId>pe.factusmart</groupId>
   <artifactId>factusmart</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
-Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.5.0.jar MiApp.java`.
+Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.6.0.jar MiApp.java`.
 
 ## Ejemplo en 10 líneas
 
@@ -121,6 +121,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.comprobantes.calcular(items, new Opciones().porcentajeIgv(10.5))` | `POST /calcular` | `Map` (`items`, `totales`) |
 | `fs.anulaciones.crear(datos, opciones)` | `POST /anulaciones` | `Map` (`tipo`, `identificador`, `ticket`) |
 | `fs.anulaciones.estado(ticket, opciones)` | `GET /anulaciones/{ticket}/status` | `Map` (`tipo`, `estado`, `documentos`) |
+| `fs.anulaciones.descargar(ticket, "xml" \| "cdr", opciones)` | `GET /anulaciones/{ticket}/{tipo}` | **`byte[]`** |
 | `fs.catalogos.listar(opciones)` | `GET /catalogos` | `Map` (`catalogos`, `nota`) |
 | `fs.catalogos.consultar(nombre, new Opciones().q("kilo"))` | `GET /catalogos/{nombre}` | `Map` (`catalogo`, `total`, `datos`) |
 | `fs.catalogos.buscarProductoSunat(q, new Opciones().limite(10).nivel("producto"))` | `GET /catalogos/productos-sunat` | `Map` (`total`, `hay_mas`, `datos`) |
@@ -129,6 +130,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.establecimientos.crear(datos, opciones)` | `POST /establecimientos` | `Map` (`establecimiento`) |
 | `fs.guias.emitir(datos, opciones)` | `POST /guias` | `Map` (revisa `enviado`) |
 | `fs.guias.estado(externalId, opciones)` | `GET /guias/{id}/status` | `Map` |
+| `fs.guias.descargar(externalId, "pdf" \| "xml" \| "cdr", opciones)` | `GET /guias/{id}/{tipo}` | **`byte[]`** |
 | `fs.rucs.listar()` | `GET /rucs` | `Map` |
 | `fs.rucs.crear(Json.objeto("ruc", ..., "empresa", ..., "correo", ..., "clave", ...))` | `POST /rucs` | `Map` (`ya_existia`) |
 | `fs.rucs.activar(ruc, activo)` | `PATCH /rucs/{ruc}/activation` | `Map` |
@@ -177,6 +179,28 @@ byte[] t58 = fs.comprobantes.descargar(externalId, "pdf", new Opciones().formato
 Sin `formato` el SDK no manda el parámetro (A4 de siempre). `formato` con `"xml"`/`"cdr"` o un valor
 fuera de la tabla lanza `ErrorDeValidacion` (422, `DATOS_INVALIDOS`, `getCampos().get("formato")`)
 **sin hacer la petición**. No cambia el PDF que recibe tu cliente final.
+
+**Guías y anulaciones** (desde 0.6.0):
+
+```java
+byte[] guiaPdf = fs.guias.descargar(guiaId, "pdf");          // también "xml" (firmado) y "cdr"
+byte[] bajaCdr = fs.anulaciones.descargar(ticket, "cdr");     // "xml" (el enviado) o "cdr" (ZIP); sin PDF
+```
+
+El CDR de una guía solo existe cuando SUNAT la aceptó, y el de una anulación cuando SUNAT respondió el
+ticket; si aún no está, se lanza `NoEncontrado` (`getCodigo()` = `NO_ENCONTRADO`): consulta `estado(...)`
+y vuelve a intentar.
+
+**`links` en las respuestas:** todo comprobante que devuelve el API (`emitir`, `listar`, `consultar`,
+`reenviar`, `consultarSunat`, `historial`) trae `links` con `pdf`, `pdf_ticket`, `xml` y `cdr`;
+`guias.emitir` (dentro de `envio`) y `guias.estado` traen `links` con `xml`, `pdf` y `cdr`;
+`anulaciones.crear` y `anulaciones.estado` traen `links` con `xml` y `cdr`. Son URLs del API: se piden
+con tu `X-API-Key` (o usa los métodos `descargar`).
+
+```java
+Map<?, ?> links = (Map<?, ?>) r.get("links");
+String urlPdf = (String) links.get("pdf");
+```
 
 ### Locales (anexos)
 

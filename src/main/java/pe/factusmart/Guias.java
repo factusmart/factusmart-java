@@ -40,4 +40,22 @@ public final class Guias {
         return fs.objeto(FactuSmart.Peticion.get("/guias/" + id + "/status")
                 .query("ruc", fs.rucDe(opciones)).reintentable(true));
     }
+
+    /**
+     * {@code GET /guias/{external_id}/{tipo}} — {@code tipo}: {@code "pdf"} (A4), {@code "xml"} (firmado) o
+     * {@code "cdr"} (de SUNAT; solo cuando la aceptó, si no se lanza {@link NoEncontrado}). Devuelve los bytes.
+     */
+    public byte[] descargar(String externalId, String tipo) {
+        return descargar(externalId, tipo, null);
+    }
+
+    /** Igual, con {@code ruc} en {@link Opciones}. */
+    public byte[] descargar(String externalId, String tipo, Opciones opciones) {
+        if (!"pdf".equals(tipo) && !"xml".equals(tipo) && !"cdr".equals(tipo)) {
+            throw new FactuSmartException("Tipo de archivo inválido \"" + tipo + "\": usa \"pdf\", \"xml\" o \"cdr\".");
+        }
+        String id = FactuSmart.segmento(externalId, "Falta el external_id de la guía.");
+        return fs.bytes(FactuSmart.Peticion.get("/guias/" + id + "/" + tipo)
+                .query("ruc", fs.rucDe(opciones)).reintentable(true));
+    }
 }

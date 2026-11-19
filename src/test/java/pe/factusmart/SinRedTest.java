@@ -1060,4 +1060,67 @@ class SinRedTest {
         assertEquals("El certificado vence el 2026-11-30.", r.get("aviso"));
         assertEquals("propio", r.get("modalidad"));
     }
+
+    // ───────────── 0.6.0: descargas de guías y anulaciones, y links ─────────────
+
+    @Test
+    void guiasDescargarDevuelveBytesY404LanzaNoEncontrado() {
+        byte[] pdf = "%PDF-1.4 guiaÿ".getBytes(StandardCharsets.ISO_8859_1);
+        Falso t = new Falso()
+                .responde(new RespuestaHttp(200, null, pdf))
+                .responde(new RespuestaHttp(200, null, "<xml/>".getBytes(StandardCharsets.UTF_8)))
+                .responde(404, "{\"success\":false,\"message\":\"El CDR de esta guía no está disponible todavía.\","
+                        + "\"codigo\":\"NO_ENCONTRADO\",\"reintentable\":false}");
+        FactuSmart fs = cliente(t);
+        assertArrayEquals(pdf, fs.guias.descargar("g 1/2", "pdf"));
+        assertEquals(BASE + "/guias/g%201%2F2/pdf?ruc=20100070970", t.peticiones.get(0).getUrl());
+        assertEquals("GET", t.peticiones.get(0).getMetodo());
+        assertTrue(t.peticiones.get(0).getCabecera("Accept").startsWith("application/pdf"));
+        fs.guias.descargar("abc", "xml", Opciones.conRuc("20999999999"));
+        assertEquals(BASE + "/guias/abc/xml?ruc=20999999999", t.peticiones.get(1).getUrl());
+        NoEncontrado n = assertThrows(NoEncontrado.class, () -> fs.guias.descargar("abc", "cdr"));
+        assertEquals("NO_ENCONTRADO", n.getCodigo());
+        assertEquals(404, n.getStatus());
+        assertEquals(3, t.peticiones.size()); // el 404 no se reintenta
+        assertThrows(FactuSmartException.class, () -> fs.guias.descargar("abc", "zip"));
+        assertThrows(FactuSmartException.class, () -> fs.guias.descargar(" ", "pdf"));
+        assertEquals(3, t.peticiones.size());
+    }
+
+    @Test
+    void anulacionesDescargarDevuelveBytesY404LanzaNoEncontrado() {
+        byte[] zip = new byte[] {0x50, 0x4b, 0x03, 0x04, (byte) 0xff};
+        Falso t = new Falso()
+                .responde(new RespuestaHttp(200, null, zip))
+                .responde(404, "{\"success\":false,\"message\":\"Anulación no encontrada.\","
+                        + "\"codigo\":\"NO_ENCONTRADO\",\"reintentable\":false}");
+        FactuSmart fs = cliente(t);
+        assertArrayEquals(zip, fs.anulaciones.descargar("1700000000123", "cdr"));
+        assertEquals(BASE + "/anulaciones/1700000000123/cdr?ruc=20100070970", t.peticiones.get(0).getUrl());
+        NoEncontrado n = assertThrows(NoEncontrado.class, () -> fs.anulaciones.descargar("no-existe", "xml"));
+        assertEquals("NO_ENCONTRADO", n.getCodigo());
+        assertEquals(BASE + "/anulaciones/no-existe/xml?ruc=20100070970", t.peticiones.get(1).getUrl());
+        assertEquals(2, t.peticiones.size());
+        // Las anulaciones no tienen PDF: error local, sin petición.
+        assertThrows(FactuSmartException.class, () -> fs.anulaciones.descargar("abc", "pdf"));
+        assertThrows(FactuSmartException.class, () -> fs.anulaciones.descargar(null, "xml"));
+        assertEquals(2, t.peticiones.size());
+    }
+
+    @Test
+    void lasRespuestasTraenLinks() {
+        Falso t = new Falso()
+                .responde(200, "{\"success\":true,\"external_id\":\"abc\",\"links\":{\"pdf\":\"https://x/documents/abc/pdf\","
+                        + "\"pdf_ticket\":\"https://x/documents/abc/pdf?formato=ticket\",\"xml\":\"https://x/documents/abc/xml\","
+                        + "\"cdr\":\"https://x/documents/abc/cdr\"}}")
+                .responde(200, "{\"success\":true,\"links\":{\"xml\":\"https://x/guias/g/xml\",\"pdf\":\"https://x/guias/g/pdf\","
+                        + "\"cdr\":\"https://x/guias/g/cdr\"}}")
+                .responde(200, "{\"success\":true,\"ticket\":\"1\",\"links\":{\"xml\":\"https://x/anulaciones/1/xml\","
+                        + "\"cdr\":\"https://x/anulaciones/1/cdr\"}}");
+        FactuSmart fs = cliente(t);
+        assertEquals("https://x/documents/abc/pdf?formato=ticket",
+                ((Map<?, ?>) fs.comprobantes.consultar("abc").get("links")).get("pdf_ticket"));
+        assertEquals("https://x/guias/g/cdr", ((Map<?, ?>) fs.guias.estado("g").get("links")).get("cdr"));
+        assertEquals("https://x/anulaciones/1/xml", ((Map<?, ?>) fs.anulaciones.estado("1").get("links")).get("xml"));
+    }
 }
