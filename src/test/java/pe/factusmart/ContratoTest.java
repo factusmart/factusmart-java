@@ -49,6 +49,7 @@ class ContratoTest {
         METODOS.put("emitDispatchGuide", "guias.emitir");
         METODOS.put("getDispatchGuideStatus", "guias.estado");
         METODOS.put("downloadDispatchGuideFile", "guias.descargar");
+        METODOS.put("resendDispatchGuide", "guias.reenviar");
         METODOS.put("listRucs", "rucs.listar");
         METODOS.put("createRuc", "rucs.crear");
         METODOS.put("setRucActivation", "rucs.activar");

@@ -42,6 +42,23 @@ public final class Guias {
     }
 
     /**
+     * {@code POST /guias/{external_id}/reenviar} — reintenta el envío a SUNAT de una guía que quedó en
+     * {@code 01} (Registrado). Cobra 1 crédito solo si el envío sale bien. Si falla, o la guía no está en
+     * {@code 01}, se lanza {@link ErrorDeValidacion} (422, {@code REENVIO_FALLIDO}); si no existe,
+     * {@link NoEncontrado}. No se reintenta automáticamente.
+     */
+    public Map<String, Object> reenviar(String externalId) {
+        return reenviar(externalId, null);
+    }
+
+    /** Igual, con {@code ruc} en {@link Opciones}. */
+    public Map<String, Object> reenviar(String externalId, Opciones opciones) {
+        String id = FactuSmart.segmento(externalId, "Falta el external_id de la guía.");
+        return fs.objeto(FactuSmart.Peticion.post("/guias/" + id + "/reenviar", fs.cuerpoConRuc(null, opciones))
+                .reintentable(false));
+    }
+
+    /**
      * {@code GET /guias/{external_id}/{tipo}} — {@code tipo}: {@code "pdf"} (A4), {@code "xml"} (firmado) o
      * {@code "cdr"} (de SUNAT; solo cuando la aceptó, si no se lanza {@link NoEncontrado}). Devuelve los bytes.
      */

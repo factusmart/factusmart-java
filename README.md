@@ -10,22 +10,22 @@ IGV y los totales, consulta los catálogos SUNAT, y descarga el PDF, el XML firm
 
 ## Instalar
 
-Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.6.0.jar` desde la release
-[v0.6.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.6.0) y agrégalo al
+Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.7.0.jar` desde la release
+[v0.7.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.7.0) y agrégalo al
 classpath de tu proyecto.
 
 Gradle (guarda el `.jar` en la carpeta `libs/` de tu proyecto):
 
 ```groovy
 dependencies {
-    implementation files('libs/factusmart-0.6.0.jar')
+    implementation files('libs/factusmart-0.7.0.jar')
 }
 ```
 
 Maven: instálalo en tu repositorio local una sola vez…
 
 ```bash
-mvn install:install-file -Dfile=factusmart-0.6.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.6.0 -Dpackaging=jar
+mvn install:install-file -Dfile=factusmart-0.7.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.7.0 -Dpackaging=jar
 ```
 
 …y luego decláralo como cualquier dependencia:
@@ -34,11 +34,11 @@ mvn install:install-file -Dfile=factusmart-0.6.0.jar -DgroupId=pe.factusmart -Da
 <dependency>
   <groupId>pe.factusmart</groupId>
   <artifactId>factusmart</artifactId>
-  <version>0.6.0</version>
+  <version>0.7.0</version>
 </dependency>
 ```
 
-Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.6.0.jar MiApp.java`.
+Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.7.0.jar MiApp.java`.
 
 ## Ejemplo en 10 líneas
 
@@ -131,6 +131,7 @@ es inmutable y seguro entre hilos: crea uno y reúsalo.
 | `fs.guias.emitir(datos, opciones)` | `POST /guias` | `Map` (revisa `enviado`) |
 | `fs.guias.estado(externalId, opciones)` | `GET /guias/{id}/status` | `Map` |
 | `fs.guias.descargar(externalId, "pdf" \| "xml" \| "cdr", opciones)` | `GET /guias/{id}/{tipo}` | **`byte[]`** |
+| `fs.guias.reenviar(externalId, opciones)` | `POST /guias/{id}/reenviar` | `Map` (`enviado`, `estado`, `links`, cobro) |
 | `fs.rucs.listar()` | `GET /rucs` | `Map` |
 | `fs.rucs.crear(Json.objeto("ruc", ..., "empresa", ..., "correo", ..., "clave", ...))` | `POST /rucs` | `Map` (`ya_existia`) |
 | `fs.rucs.activar(ruc, activo)` | `PATCH /rucs/{ruc}/activation` | `Map` |
@@ -201,6 +202,22 @@ con tu `X-API-Key` (o usa los métodos `descargar`).
 Map<?, ?> links = (Map<?, ?>) r.get("links");
 String urlPdf = (String) links.get("pdf");
 ```
+
+**Reenviar una guía a SUNAT** (desde 0.7.0): si `guias.emitir` respondió `enviado: false` (la guía quedó
+en `01`, Registrado; por ejemplo, credenciales GRE mal configuradas), corrige la causa y reintenta el
+envío. Cobra 1 crédito solo si sale bien.
+
+```java
+try {
+    Map<String, Object> r = fs.guias.reenviar(guiaId);
+    System.out.println(r.get("estado") + " " + r.get("mensaje"));   // luego fs.guias.estado(guiaId)
+} catch (ErrorDeValidacion e) {
+    // 422 REENVIO_FALLIDO: el envío falló (no se cobró; isReintentable() = true) o la guía no está en 01
+    Object estado = ((Map<?, ?>) e.getRespuesta()).get("estado");
+}
+```
+
+Si la guía no existe se lanza `NoEncontrado`. No se reintenta automáticamente.
 
 ### Locales (anexos)
 
@@ -454,6 +471,8 @@ otros y manda `ERROR_<status>` como genérico, así que no asumas una lista cerr
 | `CONFIRMAR_CAMBIO_ENTORNO` | 422: pasar de producción a prueba sin `confirmar` |
 | `PSE_NO_DISPONIBLE` | 503: Smart PSE no respondió (reintentable) |
 | `ANULACION_MIXTA` | Facturas y boletas en la misma anulación (422) |
+| `REENVIO_FALLIDO` | 422: el reenvío a SUNAT falló (no se cobró) o el comprobante/guía no está en un estado que se pueda reenviar |
+| `NOTA_EXCEDE_COMPROBANTE` | 422 **no reintentable**: la nota de crédito, sumada a las notas vivas del comprobante afectado, pasaría su total. El mensaje dice cuánto queda disponible; no se emitió ni se cobró |
 | `LLAVE_DE_PRUEBA_EN_PRODUCCION` | Llave de prueba usada con un RUC en producción (403) |
 | `ERROR_INTERNO` | Error del servidor |
 
@@ -509,7 +528,7 @@ constante y nunca lanza: si la firma o el secreto faltan o están mal formados, 
   nunca, aunque el HTTP sea 429, 409, 502, 503 o 504 (caso real: 429 `LIMITE_PRUEBAS_DIARIO`). Si el
   cuerpo no trae `reintentable` (servidor de versión anterior), se usa la regla por HTTP de arriba.
 - **Nunca** se reintentan automáticamente: `anulaciones.crear`, `guias.emitir` (no acepta
-  `Idempotency-Key`), `comprobantes.reenviar`, `comprobantes.consultarSunat`, `rucs.activar`,
+  `Idempotency-Key`), `guias.reenviar`, `comprobantes.reenviar`, `comprobantes.consultarSunat`, `rucs.activar`,
   `rucs.subirCertificado`, `rucs.configurarSunat`, aunque el API responda `reintentable: true`.
 
 ## Pruebas locales con certificado propio (`verificarSsl(false)`)

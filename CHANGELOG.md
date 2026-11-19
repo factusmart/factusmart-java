@@ -1,5 +1,24 @@
 # Cambios
 
+## 0.7.0 — 2026-11-19
+
+Reenvío de guías a SUNAT y código de error para notas de crédito que exceden el comprobante.
+
+- `fs.guias.reenviar(externalId)` (y con `Opciones` para el `ruc`) → `POST /guias/{external_id}/reenviar`.
+  Reintenta el envío de una guía que quedó en `01` (Registrado). Cobra 1 crédito solo si sale bien; la
+  respuesta trae `serie_numero`, `enviado`, `estado`, `mensaje`, `links`, `envio` y el resumen del cobro.
+  Envío fallido o guía que no está en `01` → `ErrorDeValidacion` (422, `REENVIO_FALLIDO`; si falló el
+  envío, `reintentable: true` y no se cobra; si es por estado, trae `estado`). Inexistente → `NoEncontrado`.
+  No se reintenta automáticamente.
+- `FactuSmartException.CODIGOS_DE_ERROR` suma `NOTA_EXCEDE_COMPROBANTE` (422, no reintentable): la nota de
+  crédito, sumada a las notas vivas del comprobante afectado, pasaría su total.
+- `ContratoTest` cubre `resendDispatchGuide`; `tests/fixtures/openapi.yaml` actualizado.
+- Instrucciones de instalación apuntan a `factusmart-0.7.0.jar` (release v0.7.0).
+
+```java
+Map<String, Object> r = fs.guias.reenviar("a1b2c3");   // r.get("enviado") == true
+```
+
 ## 0.6.0 — 2026-11-18
 
 Descarga de archivos de guías y anulaciones, y `links` en las respuestas.

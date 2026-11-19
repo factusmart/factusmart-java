@@ -42,6 +42,7 @@ public class FactuSmartException extends RuntimeException {
             "ERROR_EMISION",
             "RECHAZADO_SUNAT",
             "REENVIO_FALLIDO",
+            "NOTA_EXCEDE_COMPROBANTE",
             "SUNAT_NO_DISPONIBLE",
             "LIMITE_PETICIONES",
             "LIMITE_PRUEBAS_DIARIO",

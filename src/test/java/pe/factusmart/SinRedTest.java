@@ -1123,4 +1123,64 @@ class SinRedTest {
         assertEquals("https://x/guias/g/cdr", ((Map<?, ?>) fs.guias.estado("g").get("links")).get("cdr"));
         assertEquals("https://x/anulaciones/1/xml", ((Map<?, ?>) fs.anulaciones.estado("1").get("links")).get("xml"));
     }
+
+    // ───────────── 0.7.0: reenviar guías y NOTA_EXCEDE_COMPROBANTE ─────────────
+
+    @Test
+    void guiasReenviarHaceUnPostConRucYDevuelveElCobro() {
+        Falso t = new Falso().responde(200, "{\"success\":true,\"serie_numero\":\"T001-15\",\"external_id\":\"g1\","
+                + "\"enviado\":true,\"estado\":\"03\",\"mensaje\":\"Enviada a SUNAT\","
+                + "\"links\":{\"xml\":\"https://x/guias/g1/xml\",\"pdf\":\"https://x/guias/g1/pdf\",\"cdr\":\"https://x/guias/g1/cdr\"},"
+                + "\"envio\":{\"ticket\":\"abc\"},\"credito_cobrado\":true,\"creditos_restantes\":99}")
+                .responde(200, "{\"success\":true,\"enviado\":true}");
+        FactuSmart fs = cliente(t);
+        Map<String, Object> r = fs.guias.reenviar("g 1/2");
+        assertEquals(BASE + "/guias/g%201%2F2/reenviar", t.peticiones.get(0).getUrl());
+        assertEquals("POST", t.peticiones.get(0).getMetodo());
+        assertEquals("20100070970", Json.leerObjeto(t.peticiones.get(0).getCuerpoTexto()).get("ruc"));
+        assertNull(t.peticiones.get(0).getCabecera("Idempotency-Key"));
+        assertEquals(Boolean.TRUE, r.get("enviado"));
+        assertEquals("T001-15", r.get("serie_numero"));
+        assertEquals(Boolean.TRUE, r.get("credito_cobrado"));
+        assertEquals("https://x/guias/g1/cdr", ((Map<?, ?>) r.get("links")).get("cdr"));
+        fs.guias.reenviar("g2", Opciones.conRuc("20999999999"));
+        assertEquals("20999999999", Json.leerObjeto(t.peticiones.get(1).getCuerpoTexto()).get("ruc"));
+        assertThrows(FactuSmartException.class, () -> fs.guias.reenviar(" "));
+        assertEquals(2, t.peticiones.size());
+    }
+
+    @Test
+    void guiasReenviarFallidoLanzaErrorDeValidacionSinReintentar() {
+        Falso t = new Falso()
+                .responde(422, "{\"success\":false,\"message\":\"SUNAT no respondió; no se cobró.\","
+                        + "\"codigo\":\"REENVIO_FALLIDO\",\"reintentable\":true}")
+                .responde(422, "{\"success\":false,\"message\":\"La guía no está en estado Registrado.\","
+                        + "\"codigo\":\"REENVIO_FALLIDO\",\"estado\":\"05\"}")
+                .responde(404, "{\"success\":false,\"message\":\"Guía no encontrada.\","
+                        + "\"codigo\":\"NO_ENCONTRADO\",\"reintentable\":false}");
+        FactuSmart fs = cliente(t);
+        ErrorDeValidacion e = assertThrows(ErrorDeValidacion.class, () -> fs.guias.reenviar("g1"));
+        assertEquals("REENVIO_FALLIDO", e.getCodigo());
+        assertEquals(422, e.getStatus());
+        assertTrue(e.isReintentable());
+        assertEquals(1, t.peticiones.size(), "reintentable:true no se reintenta solo en un reenvío");
+        ErrorDeValidacion e2 = assertThrows(ErrorDeValidacion.class, () -> fs.guias.reenviar("g1"));
+        assertEquals("05", ((Map<?, ?>) e2.getRespuesta()).get("estado"));
+        NoEncontrado n = assertThrows(NoEncontrado.class, () -> fs.guias.reenviar("no-existe"));
+        assertEquals("NO_ENCONTRADO", n.getCodigo());
+        assertEquals(3, t.peticiones.size());
+    }
+
+    @Test
+    void notaExcedeComprobanteEsUnCodigoConocidoNoReintentable() {
+        assertTrue(FactuSmartException.CODIGOS_DE_ERROR.contains("NOTA_EXCEDE_COMPROBANTE"));
+        Falso t = new Falso().responde(422, "{\"success\":false,\"message\":\"La nota excede el total del comprobante: "
+                + "quedan S/ 20.00 disponibles.\",\"codigo\":\"NOTA_EXCEDE_COMPROBANTE\",\"reintentable\":false}");
+        FactuSmart fs = cliente(t);
+        ErrorDeValidacion e = assertThrows(ErrorDeValidacion.class,
+                () -> fs.comprobantes.emitir(Json.objeto("codigo_tipo_documento", "07", "serie_documento", "FC01")));
+        assertEquals("NOTA_EXCEDE_COMPROBANTE", e.getCodigo());
+        assertFalse(e.isReintentable());
+        assertEquals(1, t.peticiones.size());
+    }
 }
