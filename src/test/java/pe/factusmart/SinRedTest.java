@@ -187,6 +187,41 @@ class SinRedTest {
         assertFalse(fs.toString().contains("x}"));
     }
 
+    // ───────────── 0.8.0: baseUrl opcional con llave nueva ─────────────
+
+    private static final String LLAVE_NUEVA = "fs_live_A0123456789K_" + "abcdefghijABCDEFGHIJ0123456789xy";
+    private static final String LLAVE_NUEVA_TEST = "fs_test_AZZZZZZZZZZZ_" + "a".repeat(128);
+
+    @Test
+    void llaveNuevaSinBaseUrlUsaApp() {
+        FactuSmart fs = FactuSmart.builder().apiKey(LLAVE_NUEVA).build();
+        assertEquals("https://app.factusmart.pe/api/v1/issuer", fs.getBaseUrl());
+        assertEquals(FactuSmart.URL_BASE_PREDETERMINADA, FactuSmart.builder().apiKey(LLAVE_NUEVA_TEST).baseUrl("  ").build().getBaseUrl());
+        // y la petición sale a esa URL
+        Falso t = new Falso().responde(200, "{\"success\":true}");
+        FactuSmart conT = FactuSmart.builder().apiKey(LLAVE_NUEVA).transporte(t).build();
+        conT.raiz();
+        assertTrue(t.peticiones.get(0).getUrl().startsWith("https://app.factusmart.pe/api/v1/issuer/"));
+    }
+
+    @Test
+    void llaveAntiguaSinBaseUrlFalla() {
+        for (String llave : new String[] {"x", "fs_test_abc123", "fs_live_a0123456789K_abcdefghijABCDEFGHIJ0123456789xy",
+                "fs_live_A0123456789I_abcdefghijABCDEFGHIJ0123456789xy", "fs_live_A0123456789K_corta"}) {
+            FactuSmartException e = assertThrows(FactuSmartException.class, () -> FactuSmart.builder().apiKey(llave).build(), llave);
+            assertTrue(e.getMensaje().startsWith("Falta baseUrl: tu llave es del formato anterior"), e.getMensaje());
+            assertTrue(e.getMensaje().contains("fs_live_"));
+        }
+    }
+
+    @Test
+    void baseUrlExplicitoSeRespeta() {
+        assertEquals("https://s2.factusmart.pe/api/v1/issuer",
+                FactuSmart.builder().apiKey(LLAVE_NUEVA).baseUrl("https://s2.factusmart.pe/api/v1/issuer/").build().getBaseUrl());
+        assertEquals(BASE, FactuSmart.builder().apiKey("antigua").baseUrl(BASE).build().getBaseUrl());
+        assertThrows(FactuSmartException.class, () -> FactuSmart.builder().apiKey(LLAVE_NUEVA).baseUrl("no es url").build());
+    }
+
     // ───────────── Peticiones ─────────────
 
     @Test

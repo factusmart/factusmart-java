@@ -26,7 +26,6 @@ import javax.crypto.spec.SecretKeySpec;
  * <pre>{@code
  * FactuSmart fs = FactuSmart.builder()
  *     .apiKey("TU_API_KEY")
- *     .baseUrl("https://TU_URL_BASE/api/v1/issuer")
  *     .ruc("20100070970")
  *     .build();
  * Map<String, Object> r = fs.comprobantes.emitir(datos);
@@ -40,7 +39,13 @@ import javax.crypto.spec.SecretKeySpec;
 public final class FactuSmart {
 
     /** Versión del SDK. */
-    public static final String VERSION = "0.7.0";
+    public static final String VERSION = "0.8.0";
+
+    /** URL base única del API para las llaves de formato nuevo ({@code fs_live_…} / {@code fs_test_…} con la cuenta). */
+    public static final String URL_BASE_PREDETERMINADA = "https://app.factusmart.pe/api/v1/issuer";
+
+    /** Llave de formato nuevo: se atiende en {@link #URL_BASE_PREDETERMINADA} sin indicar {@code baseUrl}. */
+    private static final Pattern LLAVE_NUEVA = Pattern.compile("^fs_(live|test)_A[0-9A-HJKMNP-TV-Z]{11}_[A-Za-z0-9]{32,128}$");
 
     private static final long ESPERA_MAXIMA_MS = 60_000L;
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
@@ -88,11 +93,15 @@ public final class FactuSmart {
         if (b.apiKey == null || b.apiKey.trim().isEmpty()) {
             throw new FactuSmartException("Falta apiKey: es la API key de tu panel de integrador (pestaña Configuración).");
         }
-        if (b.baseUrl == null || b.baseUrl.trim().isEmpty()) {
-            throw new FactuSmartException("Falta baseUrl: copia la \"URL base de la API\" de tu panel de integrador "
-                    + "(ej. https://s2.factusmart.pe/api/v1/issuer).");
+        String base = b.baseUrl;
+        if (base == null || base.trim().isEmpty()) {
+            if (!esLlaveNueva(b.apiKey)) {
+                throw new FactuSmartException("Falta baseUrl: tu llave es del formato anterior; copia la \"URL base de la API\" "
+                        + "de tu panel de integrador, o pide tu llave nueva (fs_live_…) en el panel y no necesitarás baseUrl.");
+            }
+            base = URL_BASE_PREDETERMINADA;
         }
-        String url = b.baseUrl.trim().replaceAll("/+$", "");
+        String url = base.trim().replaceAll("/+$", "");
         try {
             URI u = URI.create(url);
             if (u.getScheme() == null || u.getHost() == null
@@ -100,7 +109,7 @@ public final class FactuSmart {
                 throw new IllegalArgumentException();
             }
         } catch (IllegalArgumentException e) {
-            throw new FactuSmartException("baseUrl inválida: \"" + b.baseUrl + "\". Debe ser como https://s2.factusmart.pe/api/v1/issuer.");
+            throw new FactuSmartException("baseUrl inválida: \"" + b.baseUrl + "\". Debe ser como https://app.factusmart.pe/api/v1/issuer.");
         }
         if (b.timeout == null || b.timeout.isNegative() || b.timeout.isZero()) {
             throw new FactuSmartException("timeout debe ser mayor que cero.");
@@ -125,7 +134,15 @@ public final class FactuSmart {
         this.consultas = new Consultas(this);
     }
 
-    /** Empieza a configurar un cliente. {@code apiKey} y {@code baseUrl} son obligatorias. */
+    /** {@code true} si la llave es de formato nuevo (no necesita {@code baseUrl}). */
+    static boolean esLlaveNueva(String apiKey) {
+        return apiKey != null && LLAVE_NUEVA.matcher(apiKey.trim()).matches();
+    }
+
+    /**
+     * Empieza a configurar un cliente. {@code apiKey} es obligatoria; {@code baseUrl} solo con llaves del
+     * formato anterior.
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -149,7 +166,11 @@ public final class FactuSmart {
             return this;
         }
 
-        /** URL base de tu servidor, ej. {@code https://s2.factusmart.pe/api/v1/issuer}. Obligatoria (no hay dominio único). */
+        /**
+         * URL base del API. Opcional: si no la pones y tu llave es de formato nuevo ({@code fs_live_…}), se usa
+         * {@code https://app.factusmart.pe/api/v1/issuer}. Con una llave del formato anterior es obligatoria:
+         * copia la "URL base de la API" de tu panel de integrador. Si la pones, se respeta tal cual.
+         */
         public Builder baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
             return this;
@@ -197,7 +218,7 @@ public final class FactuSmart {
             return this;
         }
 
-        /** @throws FactuSmartException si falta {@code apiKey} o {@code baseUrl} */
+        /** @throws FactuSmartException si falta {@code apiKey}, o falta {@code baseUrl} con una llave del formato anterior */
         public FactuSmart build() {
             return new FactuSmart(this);
         }

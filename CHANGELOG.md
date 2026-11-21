@@ -1,5 +1,21 @@
 # Cambios
 
+## 0.8.0 — 2026-11-21
+
+`baseUrl` ahora es opcional: todas las cuentas con llave de formato nuevo se atienden en una sola dirección.
+
+- Sin `baseUrl` y con llave nueva (`fs_live_…` / `fs_test_…` con la cuenta) se usa
+  `https://app.factusmart.pe/api/v1/issuer` (`FactuSmart.URL_BASE_PREDETERMINADA`).
+- Sin `baseUrl` y con llave del formato anterior, `build()` lanza `FactuSmartException` como antes, con un
+  mensaje que explica qué hacer (copiar la URL del panel o pedir la llave nueva).
+- Si pasas `baseUrl`, se respeta tal cual, con la misma validación.
+- Ejemplos y documentación apuntan a `https://app.factusmart.pe/api/v1/issuer`.
+- Instrucciones de instalación apuntan a `factusmart-0.8.0.jar` (release v0.8.0).
+
+```java
+FactuSmart fs = FactuSmart.builder().apiKey("fs_live_…").ruc("20100070970").build();
+```
+
 ## 0.7.0 — 2026-11-19
 
 Reenvío de guías a SUNAT y código de error para notas de crédito que exceden el comprobante.

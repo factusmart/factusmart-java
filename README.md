@@ -10,22 +10,22 @@ IGV y los totales, consulta los catálogos SUNAT, y descarga el PDF, el XML firm
 
 ## Instalar
 
-Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.7.0.jar` desde la release
-[v0.7.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.7.0) y agrégalo al
+Pronto en Maven Central. Mientras tanto, descarga `factusmart-0.8.0.jar` desde la release
+[v0.8.0 en GitHub](https://github.com/factusmart/factusmart-java/releases/tag/v0.8.0) y agrégalo al
 classpath de tu proyecto.
 
 Gradle (guarda el `.jar` en la carpeta `libs/` de tu proyecto):
 
 ```groovy
 dependencies {
-    implementation files('libs/factusmart-0.7.0.jar')
+    implementation files('libs/factusmart-0.8.0.jar')
 }
 ```
 
 Maven: instálalo en tu repositorio local una sola vez…
 
 ```bash
-mvn install:install-file -Dfile=factusmart-0.7.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.7.0 -Dpackaging=jar
+mvn install:install-file -Dfile=factusmart-0.8.0.jar -DgroupId=pe.factusmart -DartifactId=factusmart -Dversion=0.8.0 -Dpackaging=jar
 ```
 
 …y luego decláralo como cualquier dependencia:
@@ -34,11 +34,11 @@ mvn install:install-file -Dfile=factusmart-0.7.0.jar -DgroupId=pe.factusmart -Da
 <dependency>
   <groupId>pe.factusmart</groupId>
   <artifactId>factusmart</artifactId>
-  <version>0.7.0</version>
+  <version>0.8.0</version>
 </dependency>
 ```
 
-Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.7.0.jar MiApp.java`.
+Sin Gradle ni Maven, basta con ponerlo en el classpath: `javac -cp factusmart-0.8.0.jar MiApp.java`.
 
 ## Ejemplo en 10 líneas
 
@@ -47,7 +47,7 @@ import pe.factusmart.FactuSmart;
 import pe.factusmart.Json;
 import java.util.Map;
 
-FactuSmart fs = FactuSmart.builder().apiKey("TU_API_KEY").baseUrl("https://TU_URL_BASE/api/v1/issuer").ruc("20100070970").build();
+FactuSmart fs = FactuSmart.builder().apiKey("fs_live_TU_LLAVE").ruc("20100070970").build();
 
 Map<String, Object> calc = FactuSmart.calcularComprobante(Json.lista(
     Json.objeto("descripcion", "Servicio de consultoría", "cantidad", 1, "valor_unitario", 100, "afectacion", "10")));
@@ -60,8 +60,12 @@ Map<String, Object> r = fs.comprobantes.emitir(Json.objeto(
 System.out.println(r.get("aceptado_por_sunat") + " " + r.get("serie_numero"));
 ```
 
-`baseUrl` **no es igual para todas las cuentas**: cada cuenta vive en un servidor distinto. Cópiala
-de tu panel de integrador (pestaña Configuración, "URL base de la API").
+Con una llave de formato nuevo (`fs_live_…` / `fs_test_…`) no necesitas `baseUrl`: el SDK usa
+`https://app.factusmart.pe/api/v1/issuer`.
+
+> **Llave del formato anterior:** sigue funcionando, pero solo contra la URL de su servidor. Agrega
+> `.baseUrl("…")` con la "URL base de la API" de tu panel de integrador (pestaña Configuración), o pide
+> tu llave nueva en el panel y quita `baseUrl`.
 
 Los datos van y vienen como `Map<String, Object>` / `List<Object>` con las claves del API tal cual
 (en español con guion bajo). `Json.objeto(...)` y `Json.lista(...)` son atajos para armarlos; también
@@ -88,14 +92,14 @@ modo prueba (SUNAT beta, sin validez fiscal).
 | Opción | Obligatoria | Default | Nota |
 |---|---|---|---|
 | `apiKey(String)` | sí | — | Va en el header `X-API-Key`. |
-| `baseUrl(String)` | sí | — | URL base de tu servidor (sin barra final; si la pones, se quita). |
+| `baseUrl(String)` | solo con llave antigua | `https://app.factusmart.pe/api/v1/issuer` (llave nueva) | Si la pones, se respeta tal cual (la barra final se quita). |
 | `ruc(String)` | no | — | RUC emisor por defecto. Se cambia por llamada con `Opciones.conRuc(...)`. |
 | `timeout(int segundos)` / `timeout(Duration)` | no | `60` s | Por petición (SUNAT a veces tarda). |
 | `maxReintentos(int)` | no | `3` | Ver "Reintentos e idempotencia". |
 | `verificarSsl(boolean)` | no | `true` | `false` **solo** para pruebas locales con certificado propio. |
 | `transporte(Transporte)` | no | `HttpClient` | Para inyectar tu propio transporte HTTP (proxies, pruebas). |
 
-Si falta `apiKey` o `baseUrl`, `build()` lanza `FactuSmartException` con un mensaje claro. El cliente
+Si falta `apiKey`, o falta `baseUrl` con una llave del formato anterior, `build()` lanza `FactuSmartException` con un mensaje claro. El cliente
 es inmutable y seguro entre hilos: crea uno y reúsalo.
 
 ## Métodos
